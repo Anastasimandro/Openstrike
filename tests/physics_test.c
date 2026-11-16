@@ -73,6 +73,19 @@ int main(void)
     simular("recto hacia pared sur (z+)",    (Vec3){ 0.0f, 0.0f, 1.0f }, 320);
     simular("recto hacia pared oeste (x-)",  (Vec3){ -1.0f, 0.0f, 0.0f }, 320);
 
+    /* Casos que reprodujeron el bloqueo irregular (goteo en rozamiento):
+     * movimiento casi paralelo a la pared con leve componente hacia dentro */
+    simular("rasante pared norte (+x, 15° dentro)",
+            vec3_norm((Vec3){ 1.0f, 0.0f, -0.268f }), 320);
+    simular("rasante pared oeste (-z, 15° dentro)",
+            vec3_norm((Vec3){ -0.268f, 0.0f, -1.0f }), 320);
+    simular("rasante pared este (+z, 15° dentro)",
+            vec3_norm((Vec3){ 1.0f, 0.0f, 0.268f }), 320);
+    simular("diagonal suave hacia pared este",
+            vec3_norm((Vec3){ 1.0f, 0.0f, 0.5f }), 320);
+    simular("esquina noroeste (45° a ambas paredes)",
+            vec3_norm((Vec3){ -1.0f, 0.0f, -1.0f }), 320);
+
     if (g_fallos > 0) {
         printf("RESULTADO: %d fallo(s)\n", g_fallos);
         return 1;

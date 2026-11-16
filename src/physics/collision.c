@@ -127,17 +127,13 @@ bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt)
 {
     if (!map || !map->cargado || map->face_count == 0) { return false; }
 
-    /* Dirección horizontal del movimiento (solo XZ, sin Y) */
     f32 xz = sqrtf(vel->x * vel->x + vel->z * vel->z);
     if (xz < 0.001f) { return false; }   /* parado: nada que bloquear */
 
-    Vec3 dir = { vel->x / xz, 0.0f, vel->z / xz };
+    /* Origen del rayo a la altura de rodillas (igual que el suelo) */
     Vec3 orig = { pos->x, pos->y + RAY_ORIG_OFFSET, pos->z };
 
-    /* Distancia máxima aceptable = avance de este tick + radio del jugador */
-    f32 best_t = xz * dt + RADIO_JUGADOR;
-    Vec3 best_normal = { 0.0f, 0.0f, 0.0f };
-    bool encontrada  = false;
+    bool corregido = false;
 
     for (i32 fi = 0; fi < map->face_count; fi++) {
         const MapFace *face  = &map->faces[fi];
@@ -153,40 +149,45 @@ bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt)
             Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
             Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
 
+            Vec3 e1 = vec3_sub(v1, v0);
+            Vec3 e2 = vec3_sub(v2, v0);
+            Vec3 n  = vec3_norm(vec3_cross(e1, e2));
+
+            /* Solo caras casi verticales */
+            if (fabsf(n.y) >= PARED_NORMAL_Y_MAX) { continue; }
+
+            /* Rayo desde el jugador HACIA la pared (opuesto a la normal):
+             * mide la distancia perpendicular REAL a la pared, sea cual sea
+             * el ángulo de la velocidad. (El rayo según la velocidad fallaba
+             * en movimiento casi paralelo a la pared: no disparaba y el
+             * jugador goteaba a través — bloqueo irregular.) */
+            Vec3 dir_ray = { -n.x, -n.y, -n.z };
             f32  t;
-            Vec3 normal;
-            if (ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
-                /* Solo caras casi verticales dentro del rango de recorte */
-                if (fabsf(normal.y) < PARED_NORMAL_Y_MAX && t < best_t) {
-                    best_t      = t;
-                    best_normal = normal;
-                    encontrada  = true;
-                }
+            if (!ray_triangulo(orig, dir_ray, v0, v1, v2, &t, NULL)) {
+                continue;
             }
+
+            /* ¿Nos acercamos a esta pared? (dot < 0 = movimiento hacia ella) */
+            f32 into = vec3_dot(*vel, n);
+            if (into >= 0.0f) { continue; }
+
+            /* ¿Ya estamos dentro del radio de esta pared? */
+            if (t >= RADIO_JUGADOR) { continue; }
+
+            /* Empujar fuera, PERPENDICULAR a la pared, hasta el radio.
+             * El empuje es perpendicular → la distancia de bloqueo es
+             * siempre la misma (16 u) en cualquier ángulo de llegada.
+             * En esquinas cada pared se corrige por separado. */
+            f32 deficit = RADIO_JUGADOR - t;
+            *pos = vec3_add(*pos, vec3_scale(n, deficit));
+
+            /* Slide: quitar la componente de la velocidad hacia la pared,
+             * conservando la tangencial (se resbala a lo largo de ella). */
+            *vel = vec3_sub(*vel, vec3_scale(n, into));
+
+            corregido = true;
         }
     }
 
-    if (!encontrada) { return false; }
-
-    /* Solo bloquear si el movimiento va HACIA la pared (dot < 0). Si ya nos
-     * alejamos, no recortar ni tocar la velocidad. */
-    f32 hacia_pared = vec3_dot(*vel, best_normal);
-    if (hacia_pared >= 0.0f) { return false; }
-
-    /* Recortar la posición: dejar RADIO_JUGADOR de distancia a la pared.
-     * dir.y = 0 → la Y no cambia (la gravedad y el suelo siguen su curso).
-     * Si el jugador ya está a menos de su radio (residuo de ticks
-     * anteriores — la aceleración hacia la pared avanza ~0.3 u/tick),
-     * recorte es negativo y lo empuja de vuelta a 16 u. Sin esto el
-     * jugador gotea lentamente a través de la pared (verificado con el
-     * test físico del CI). */
-    f32 recorte = best_t - RADIO_JUGADOR;
-    pos->x = orig.x + dir.x * recorte;
-    pos->z = orig.z + dir.z * recorte;
-
-    /* Slide: quitar la componente de la velocidad perpendicular a la pared,
-     * conservando la tangencial (se resbala a lo largo de la pared). */
-    *vel = vec3_sub(*vel, vec3_scale(best_normal, hacia_pared));
-
-    return true;
+    return corregido;
 }
