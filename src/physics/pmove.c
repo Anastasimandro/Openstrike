@@ -108,6 +108,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
     /* ── Integrar posición ────────────────────────────────────────────── */
     p->pos = vec3_add(p->pos, vec3_scale(p->vel, dt));
 
+    /* ── Bloquear paredes: slide en caras verticales (5a-2) ───────────── *
+     * Debe correr ANTES de detectar suelo: recorta pos si este tick cruzó  *
+     * una pared y proyecta vel para resbalar a lo largo de ella.           */
+    collision_bloquear_pared(map, &p->pos, &p->vel, dt);
+
     /* ── Detectar suelo real contra geometría del mapa ───────────────── *
      * Reemplaza el suelo temporal "if (pos.y <= 0)".                    *
      * Condiciones para aterrizar:                                        *

@@ -37,4 +37,15 @@ typedef struct {
  * Seguro llamarlo cada tick: sin malloc, O(vértices del mapa). */
 FloorHit collision_detectar_suelo(const Map *map, Vec3 pos);
 
+/* Bloqueo de paredes con slide (5a-2). Tras integrar la posición del tick,
+ * lanza un rayo horizontal desde (pos.x, pos.y+36, pos.z) en la dirección
+ * XZ de la velocidad. Si golpea una cara casi vertical (|normal.y| < 0.3)
+ * más cerca que el avance de este tick + radio 16:
+ *   1. recorta pos para dejar 16 u de distancia a la pared,
+ *   2. proyecta vel sobre el plano de la pared (vel -= n * dot(vel, n))
+ *      → el jugador se resbala a lo largo de ella.
+ * Solo actúa si el movimiento va HACIA la pared (dot(vel, normal) < 0).
+ * Retorna true si se recortó el movimiento. Sin malloc, O(vértices). */
+bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt);
+
 #endif /* OPENSTRIKE_COLLISION_H */

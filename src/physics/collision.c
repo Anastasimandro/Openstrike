@@ -26,20 +26,24 @@
 /* Distancia máxima de búsqueda = SV_STEPSIZE (18) + margen de 2 unidades */
 #define SUELO_MAX_DIST   72.0f
 
+/* Radio del jugador (cápsula aproximada) para el bloqueo de paredes */
+#define RADIO_JUGADOR        16.0f
+
+/* Una cara es "pared" si su normal es casi horizontal (|normal.y| < esto) */
+#define PARED_NORMAL_Y_MAX   0.3f
+
 /* ── Möller–Trumbore: intersección rayo–triángulo ────────────────────────── *
- * Retorna true si el rayo (orig, dir) intersecta el triángulo (v0,v1,v2).    *
- * Solo acepta triángulos con normal Y > 0 (cara de suelo, no techo/pared).  *
- * Escribe la distancia t en *t_out. t > 0 siempre al retornar true.         */
+ * Generalizada (5a-2): acepta triángulos de CUALQUIER orientación — suelo,
+ * pared o techo. El filtrado por orientación lo hace cada llamada según su
+ * caso (suelo: normal.y > 0; pared: |normal.y| < 0.3).
+ * Escribe la distancia t en *t_out y la normal normalizada en *normal_out
+ * (si no es NULL). t > 0 siempre al retornar true.                          */
 static bool ray_triangulo(Vec3 orig, Vec3 dir,
                            Vec3 v0, Vec3 v1, Vec3 v2,
-                           f32 *t_out)
+                           f32 *t_out, Vec3 *normal_out)
 {
     Vec3 e1 = vec3_sub(v1, v0);
     Vec3 e2 = vec3_sub(v2, v0);
-
-    /* Descartar caras no-suelo antes del cálculo completo */
-    Vec3 face_normal = vec3_cross(e1, e2);
-    if (face_normal.y <= 0.0f) { return false; }
 
     /* Test de paralelismo */
     Vec3 h = vec3_cross(dir, e2);
@@ -59,6 +63,9 @@ static bool ray_triangulo(Vec3 orig, Vec3 dir,
     if (t < 1e-6f) { return false; }   /* intersección detrás del origen */
 
     *t_out = t;
+    if (normal_out) {
+        *normal_out = vec3_norm(vec3_cross(e1, e2));
+    }
     return true;
 }
 
@@ -97,20 +104,85 @@ FloorHit collision_detectar_suelo(const Map *map, Vec3 pos)
             Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
 
             f32 t;
-            if (ray_triangulo(orig, dir, v0, v1, v2, &t)) {
-                if (t < best_t) {
-                    best_t = t;
-                    result.hit = true;
+            Vec3 normal;
+            if (ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
+                /* Filtrar solo caras de suelo (la base ya no filtra) */
+                if (normal.y > 0.0f && t < best_t) {
+                    best_t      = t;
+                    result.hit  = true;
                     /* Y del suelo = Y del origen - distancia recorrida hacia abajo */
-                    result.y = orig.y - t;
-                    /* Normal normalizada de la cara */
-                    Vec3 e1 = vec3_sub(v1, v0);
-                    Vec3 e2 = vec3_sub(v2, v0);
-                    result.normal = vec3_norm(vec3_cross(e1, e2));
+                    result.y      = orig.y - t;
+                    result.normal = normal;
                 }
             }
         }
     }
 
     return result;
+}
+
+/* ── API pública: bloqueo de paredes con slide ────────────────────────────── */
+
+bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt)
+{
+    if (!map || !map->cargado || map->face_count == 0) { return false; }
+
+    /* Dirección horizontal del movimiento (solo XZ, sin Y) */
+    f32 xz = sqrtf(vel->x * vel->x + vel->z * vel->z);
+    if (xz < 0.001f) { return false; }   /* parado: nada que bloquear */
+
+    Vec3 dir = { vel->x / xz, 0.0f, vel->z / xz };
+    Vec3 orig = { pos->x, pos->y + RAY_ORIG_OFFSET, pos->z };
+
+    /* Distancia máxima aceptable = avance de este tick + radio del jugador */
+    f32 best_t = xz * dt + RADIO_JUGADOR;
+    Vec3 best_normal = { 0.0f, 0.0f, 0.0f };
+    bool encontrada  = false;
+
+    for (i32 fi = 0; fi < map->face_count; fi++) {
+        const MapFace *face  = &map->faces[fi];
+        u32            base  = face->vertex_start;
+        u32            count = face->vertex_count;
+
+        for (u32 ti = 0; ti + 2 < count; ti += 3) {
+            const MapVertex *va = &map->vertices[base + ti + 0];
+            const MapVertex *vb = &map->vertices[base + ti + 1];
+            const MapVertex *vc = &map->vertices[base + ti + 2];
+
+            Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
+            Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
+            Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+
+            f32  t;
+            Vec3 normal;
+            if (ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
+                /* Solo caras casi verticales dentro del rango de recorte */
+                if (fabsf(normal.y) < PARED_NORMAL_Y_MAX && t < best_t) {
+                    best_t      = t;
+                    best_normal = normal;
+                    encontrada  = true;
+                }
+            }
+        }
+    }
+
+    if (!encontrada) { return false; }
+
+    /* Solo bloquear si el movimiento va HACIA la pared (dot < 0). Si ya nos
+     * alejamos, no recortar ni tocar la velocidad. */
+    f32 hacia_pared = vec3_dot(*vel, best_normal);
+    if (hacia_pared >= 0.0f) { return false; }
+
+    /* Recortar la posición: dejar RADIO_JUGADOR de distancia a la pared.
+     * dir.y = 0 → la Y no cambia (la gravedad y el suelo siguen su curso). */
+    f32 recorte = best_t - RADIO_JUGADOR;
+    if (recorte < 0.0f) { recorte = 0.0f; }
+    pos->x = orig.x + dir.x * recorte;
+    pos->z = orig.z + dir.z * recorte;
+
+    /* Slide: quitar la componente de la velocidad perpendicular a la pared,
+     * conservando la tangencial (se resbala a lo largo de la pared). */
+    *vel = vec3_sub(*vel, vec3_scale(best_normal, hacia_pared));
+
+    return true;
 }
