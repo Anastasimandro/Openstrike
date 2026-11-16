@@ -26,8 +26,14 @@
 #define SV_FRICTION         5.5f
 #define SV_STOPSPEED       80.0f
 #define SV_ACCELERATE       5.5f
-#define SV_AIRACCELERATE   12.0f   /* sin clamp post-salto = bunny hop CS 1.6 */
-#define BHOP_MAX_SPEED    320.0f   /* cap XZ en aire — 28% sobre SPEED_RUN    */
+#define SV_AIRACCELERATE   12.0f   /* aceleración aérea (valor CS:GO)         */
+#define AIR_WISH_SPEED     30.0f   /* sv_air_max_wishspeed CS:GO — en aire la  */
+                                   /* velocidad deseada se clampea a 30 u/s:   */
+                                   /* solo el strafe bien medido gana velocidad*/
+#define BHOP_MAX_SPEED    320.0f   /* cap XZ continuo en aire — 28% sobre RUN  */
+#define BHOP_GRACE_TICKS      4    /* ticks tras aterrizar sin fricción:       */
+                                   /* saltar dentro de la ventana (~62 ms)     */
+                                   /* conserva la velocidad — bhop habilidoso  */
 #define SV_STEPSIZE        18.0f
 #define SPEED_RUN         250.0f
 #define SPEED_WALK        130.0f
@@ -51,6 +57,7 @@ typedef struct {
     bool en_suelo;
     bool agachado;
     bool caminando;
+    u8   ticks_en_suelo;  /* ticks consecutivos en suelo — ventana bhop */
 } PhysPlayer;
 
 /* ── API pública ──────────────────────────────────────────────────────────── */

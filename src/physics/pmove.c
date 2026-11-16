@@ -51,6 +51,19 @@ static void acelerar(PhysPlayer *p, Vec3 wish_dir,
     p->vel = vec3_add(p->vel, vec3_scale(wish_dir, accel_speed));
 }
 
+/* Cap XZ a BHOP_MAX_SPEED — el bhop mantiene velocidad pero no se acumula.
+ * Se aplica en CADA tick de aire (no solo en el salto): el strafe aéreo
+ * no puede superar el cap. */
+static void cap_velocidad_bhop(PhysPlayer *p)
+{
+    f32 xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+    if (xz > BHOP_MAX_SPEED) {
+        f32 scale = BHOP_MAX_SPEED / xz;
+        p->vel.x *= scale;
+        p->vel.z *= scale;
+    }
+}
+
 /* ── API pública ──────────────────────────────────────────────────────────── */
 
 void phys_player_init(PhysPlayer *p, Vec3 spawn_pos)
@@ -65,26 +78,28 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
     p->caminando = input.caminar;
 
     if (p->en_suelo) {
-        /* ── En suelo: fricción + movimiento ──────────────────────────── */
-        aplicar_friccion(p, dt);
+        /* ── En suelo: fricción + movimiento ──────────────────────────── *
+         * Ventana de gracia bhop: los primeros BHOP_GRACE_TICKS tras      *
+         * aterrizar NO aplican fricción. Saltar dentro de esa ventana     *
+         * (~62 ms) conserva la velocidad; llegar tarde ya la perdió       *
+         * (castigo por timing impreciso). Andar normal no se beneficia:   *
+         * la aceleración en suelo iguala a SPEED_RUN de todos modos.      */
+        if (p->ticks_en_suelo > BHOP_GRACE_TICKS) {
+            aplicar_friccion(p, dt);
+        }
 
         if (input.saltar) {
             /* Impulso de salto */
             p->vel.y    = JUMP_IMPULSE;
             p->en_suelo = false;
 
-            /* Air strafing inmediato en el frame del salto */
+            /* Air strafing inmediato en el frame del salto — clampeado a
+             * AIR_WISH_SPEED (30): sin skill no gana velocidad */
             if (vec3_len(input.wish_dir) > 0.001f) {
-                acelerar(p, input.wish_dir, SPEED_RUN, SV_AIRACCELERATE, dt);
+                acelerar(p, input.wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
             }
 
-            /* Cap XZ — el bhop mantiene velocidad pero no se acumula */
-            f32 xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
-            if (xz > BHOP_MAX_SPEED) {
-                f32 scale = BHOP_MAX_SPEED / xz;
-                p->vel.x *= scale;
-                p->vel.z *= scale;
-            }
+            cap_velocidad_bhop(p);
         } else {
             /* Aceleración en suelo según estado */
             f32 wish_speed = p->agachado  ? SPEED_DUCK :
@@ -101,8 +116,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         if (p->vel.y < -SV_MAXVELOCITY) { p->vel.y = -SV_MAXVELOCITY; }
 
         if (vec3_len(input.wish_dir) > 0.001f) {
-            acelerar(p, input.wish_dir, SPEED_RUN, SV_AIRACCELERATE, dt);
+            acelerar(p, input.wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
         }
+
+        /* Cap XZ continuo en aire (ver cap_velocidad_bhop) */
+        cap_velocidad_bhop(p);
     }
 
     /* ── Integrar posición ────────────────────────────────────────────── */
@@ -126,6 +144,13 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         p->en_suelo = true;
     } else {
         p->en_suelo = false;
+    }
+
+    /* ── Contador de suelo para la ventana de gracia del bhop ─────────── */
+    if (p->en_suelo) {
+        if (p->ticks_en_suelo < 255) { p->ticks_en_suelo++; }
+    } else {
+        p->ticks_en_suelo = 0;
     }
 }
 
