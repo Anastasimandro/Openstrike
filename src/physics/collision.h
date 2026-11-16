@@ -21,6 +21,11 @@
 #include "renderer/math.h"
 #include "map/map.h"
 
+/* Altura máxima de escalón para step-up (5a-3).
+ * Debe coincidir con SV_STEPSIZE en pmmove.h (18 u).
+ * Definido aquí para evitar dependencia circular con pmmove.h. */
+#define SV_STEPSIZE 18.0f
+
 /* ────────────────────────────────────────────────────────────────────────── *
  * Resultado de una consulta de suelo.                                        *
  * ────────────────────────────────────────────────────────────────────────── */
