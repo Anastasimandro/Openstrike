@@ -82,6 +82,29 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
     p->agachado  = input.agacharse;
     p->caminando = input.caminar;
 
+    /* ── Coyote time: incrementar contador al dejar el suelo ───────────── */
+    if (en_suelo_antes && !p->en_suelo) {
+        p->coyote_ticks = COYOTE_TICKS;
+    } else if (p->coyote_ticks > 0) {
+        p->coyote_ticks--;
+    }
+
+    /* ── Jump buffer: si se pulsa salto en aire, guardar buffer ─────────── */
+    if (input.saltar && !p->en_suelo) {
+        p->jump_buffer_ticks = JUMP_BUFFER_TICKS;
+    } else if (p->jump_buffer_ticks > 0) {
+        p->jump_buffer_ticks--;
+    }
+
+    /* ── Variable jump height (jump cut): si suelta SPACE subiendo, cortar  *
+     * la velocidad vertical a JUMP_CUT_VEL.                                */
+    if (!input.saltar_held && p->vel.y > JUMP_CUT_VEL) {
+        p->vel.y = JUMP_CUT_VEL;
+    }
+
+    bool puede_saltar = p->en_suelo || p->coyote_ticks > 0;
+    bool debe_saltar  = input.saltar || p->jump_buffer_ticks > 0;
+
     if (p->en_suelo) {
         /* ── En suelo: fricción + movimiento ──────────────────────────── *
          * Ventana de gracia bhop: los primeros BHOP_GRACE_TICKS tras      *
@@ -93,10 +116,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
             aplicar_friccion(p, dt);
         }
 
-        if (input.saltar) {
+        if (debe_saltar) {
             /* Impulso de salto */
-            p->vel.y    = JUMP_IMPULSE;
-            p->en_suelo = false;
+            p->vel.y             = JUMP_IMPULSE;
+            p->en_suelo          = false;
+            p->jump_buffer_ticks = 0;  /* consumir buffer */
 
             /* Air strafing inmediato en el frame del salto — clampeado a
              * AIR_WISH_SPEED (30): sin skill no gana velocidad */

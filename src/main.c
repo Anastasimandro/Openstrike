@@ -34,7 +34,9 @@
 
 typedef struct {
     bool adelante, atras, izquierda, derecha;
-    bool saltar, agacharse, caminar;
+    bool saltar;         /* flanco de subida (pulso) */
+    bool saltar_held;    /* tecla mantenida (para variable jump height) */
+    bool agacharse, caminar;
     f32  mouse_dx, mouse_dy;
 } InputState;
 
@@ -150,6 +152,7 @@ static void process_events(void)
     /* Flanco de subida de SPACE: saltar solo en el tick que se pulsa */
     bool espacio_ahora  = (bool)keys[SDL_SCANCODE_SPACE];
     g_input.saltar      = espacio_ahora && !g_espacio_anterior;
+    g_input.saltar_held = espacio_ahora;   /* tecla mantenida para jump cut */
     g_espacio_anterior  = espacio_ahora;
 }
 
@@ -178,10 +181,11 @@ static void update(f32 dt)
     if (wish_len > 0.001f) { wish = vec3_scale(wish, 1.0f / wish_len); }
 
     PhysInput phys_input;
-    phys_input.wish_dir  = wish;
-    phys_input.saltar    = g_input.saltar;
-    phys_input.agacharse = g_input.agacharse;
-    phys_input.caminar   = g_input.caminar;
+    phys_input.wish_dir    = wish;
+    phys_input.saltar      = g_input.saltar;
+    phys_input.saltar_held = g_input.saltar_held;
+    phys_input.agacharse   = g_input.agacharse;
+    phys_input.caminar     = g_input.caminar;
 
     /* Tick de física con detección de suelo real */
     phys_tick(&g_player, phys_input, &g_map, dt);

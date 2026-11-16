@@ -43,22 +43,32 @@
 #define VIEW_HEIGHT_STAND  64.0f   /* altura ojo de pie (unidades Hammer)     */
 #define VIEW_HEIGHT_DUCK   28.0f   /* altura ojo agachado                     */
 
+/* ── Mejoras de salto (quality of life) ───────────────────────────────────── */
+#define JUMP_CUT_VEL      120.0f   /* vel.y mínima al soltar SPACE en subida  */
+#define COYOTE_TICKS        2      /* ticks tras dejar suelo donde aún se puede
+                                    * saltar (~31 ms) — evita fallos de timing */
+#define JUMP_BUFFER_TICKS   3      /* ticks de buffer si se pulsa SPACE antes
+                                    * de aterrizar — salta al tocar suelo      */
+
 /* ── Structs ──────────────────────────────────────────────────────────────── */
 
 typedef struct {
     Vec3 wish_dir;   /* dirección deseada normalizada en plano XZ */
-    bool saltar;
+    bool saltar;       /* flanco de subida (pulso) */
+    bool saltar_held;  /* tecla mantenida (para variable jump height) */
     bool agacharse;
     bool caminar;
 } PhysInput;
 
 typedef struct {
-    Vec3 pos;        /* posición en unidades Hammer  */
-    Vec3 vel;        /* velocidad en unidades/segundo */
+    Vec3 pos;            /* posición en unidades Hammer  */
+    Vec3 vel;            /* velocidad en unidades/segundo */
     bool en_suelo;
     bool agachado;
     bool caminando;
-    u8   ticks_en_suelo;  /* ticks consecutivos en suelo — ventana bhop */
+    u8   ticks_en_suelo;     /* ticks consecutivos en suelo — ventana bhop */
+    u8   coyote_ticks;       /* ticks desde que dejó el suelo (coyote time) */
+    u8   jump_buffer_ticks;  /* buffer de salto si se pulsa antes de aterrizar */
 } PhysPlayer;
 
 /* ── API pública ──────────────────────────────────────────────────────────── */
