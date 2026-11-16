@@ -186,30 +186,58 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
          * rampa, la fricción lo detiene para que no se deslice solo.      *
          * Sin vibraciones ni atascos.                                     */
         if (fh.normal.y < 0.95f) {
+            /* ── Suelo pendiente (5b): caminar por rampas suavemente ─── *
+             * Proyecta wish_dir sobre el plano de la rampa para que el   *
+             * movimiento siga la pendiente. Aplica gravedad tangente     *
+             * reducida (factor RAMP_GRAVITY) para que subir sea posible  *
+             * pero se note la pendiente. Si está quieto, frena con       *
+             * fricción para no deslizarse solo.                          */
             f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
-            if (vec3_len(input.wish_dir) > 0.001f || vel_xz > 0.1f) {
+
+            /* Proyectar wish_dir en el plano de la rampa (quitar componente normal) */
+            Vec3 wish_ramp = vec3_sub(input.wish_dir,
+                vec3_scale(fh.normal, vec3_dot(input.wish_dir, fh.normal)));
+            wish_ramp.y = 0.0f;
+            f32 wish_len = sqrtf(wish_ramp.x * wish_ramp.x + wish_ramp.z * wish_ramp.z);
+            if (wish_len > 0.001f) {
+                wish_ramp.x /= wish_len;
+                wish_ramp.z /= wish_len;
+            }
+
+            if (wish_len > 0.001f || vel_xz > 0.1f) {
+                /* Movimiento en la rampa: subir o bajar */
                 Vec3 gravedad = { 0.0f, -SV_GRAVITY, 0.0f };
                 f32  g_n      = vec3_dot(gravedad, fh.normal);
                 Vec3 g_tan    = vec3_sub(gravedad, vec3_scale(fh.normal, g_n));
-                p->vel.x += g_tan.x * dt;
-                p->vel.z += g_tan.z * dt;
+
+                /* Gravedad tangente reducida: subir no es imposible, pero cuesta */
+                f32 ramp_grav = 0.4f;  /* TUNING: 1.0 = gravedad completa, 0 = sin gravedad */
+                p->vel.x += g_tan.x * dt * ramp_grav;
+                p->vel.z += g_tan.z * dt * ramp_grav;
+
+                /* Acelerar en dirección del plano de la rampa */
+                if (wish_len > 0.001f) {
+                    f32 wish_speed = p->agachado ? SPEED_DUCK :
+                                     p->caminando ? SPEED_WALK : SPEED_RUN;
+                    acelerar(p, wish_ramp, wish_speed, SV_ACCELERATE, dt);
+                }
             } else {
+                /* Quieto en rampa: fricción para no deslizarse solo */
                 aplicar_friccion(p, dt);
             }
+
             p->pos.y  = fh.y;
             p->vel.y  = 0.0f;
 
-            /* ── Salto automático al aterrizar (jump buffer en rampa) ─── *
-             * Si se pulió SPACE justo antes de tocar suelo (buffer con    *
-             * ticks restantes), salta en este mismo tick en vez de esperar*
-             * al siguiente. Hace que el salto automático sea responsivo   *
-             * también al aterrizar en superficies inclinadas.             */
+            /* ── Salto automático al aterrizar (jump buffer en rampa) ── *
+             * Si se pulió SPACE justo antes de tocar suelo (buffer con   *
+             * ticks restantes), salta en este mismo tick.                */
             if (p->jump_buffer_ticks > 0) {
                 p->vel.y             = JUMP_IMPULSE;
                 p->en_suelo          = false;
                 p->jump_buffer_ticks = 0;
-                if (vec3_len(input.wish_dir) > 0.001f) {
-                    acelerar(p, input.wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
+                if (wish_len > 0.001f) {
+                    acelerar(p, wish_ramp, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
                 }
                 cap_velocidad_bhop(p);
             }
