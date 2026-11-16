@@ -216,8 +216,14 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
                 aplicar_friccion(p, dt);
             }
 
+            /* Proyectar velocidad al plano de la rampa para que la integración
+             * siga la pendiente sin "saltar" ni penetrar el suelo.
+             * Plano: dot(vel, normal) = 0  =>  vel.y = -(vel.x*n.x + vel.z*n.z)/n.y */
+            if (fh.normal.y > 0.001f) {
+                p->vel.y = -(p->vel.x * fh.normal.x + p->vel.z * fh.normal.z) / fh.normal.y;
+            }
+
             p->pos.y  = fh.y;
-            p->vel.y  = 0.0f;
 
             /* ── Salto automático al aterrizar (jump buffer en rampa) ── *
              * Si se pulió SPACE justo antes de tocar suelo (buffer con   *
