@@ -26,6 +26,10 @@
 /* Distancia máxima de búsqueda = SV_STEPSIZE (18) + margen de 2 unidades */
 #define SUELO_MAX_DIST   72.0f
 
+/* Distancia adelante del step-up (un poco más que el radio para que el
+ * rayo salga del borde del escalón). Valor fijo, no configurable. */
+#define STEP_UP_AHEAD_DIST  20.0f
+
 /* Radio del jugador (cápsula aproximada) para el bloqueo de paredes */
 #define RADIO_JUGADOR        16.0f
 
@@ -190,4 +194,90 @@ bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt)
     }
 
     return corregido;
+}
+
+/* ── Step-up (5a-3) ─────────────────────────────────────────────────────────
+ * Intenta subir un escalón de hasta SV_STEPSIZE (18 u) cuando el jugador
+ * choca contra un borde bajo mientras camina.
+ * Llamar tras collision_bloquear_pared y ANTES de collision_detectar_suelo.
+ *
+ * Algoritmo:
+ *  1. Solo si estaba en suelo antes del tick Y hay movimiento en XZ.
+ *  2. Desde (pos + wish_dir * STEP_UP_AHEAD_DIST + (0, SV_STEPSIZE, 0)),
+ *     lanza rayo hacia abajo buscando suelo.
+ *  3. Si hay suelo y su Y está entre pos.y + 0.5 y pos.y + SV_STEPSIZE:
+ *       → pos.y = suelo_y (teleport suave).
+ *       → vel.y = 0.
+ *  4. Retorna true si subió, false si no.
+ *
+ * Nota: SV_STEPSIZE (18) ya está definido en pmove.h y es visible aquí
+ * por inclusión transitiva. No redefinir aquí para evitar desincronización.
+ * ───────────────────────────────────────────────────────────────────────── */
+bool collision_intentar_step_up(const Map *map, Vec3 *pos, const Vec3 *wish_dir,
+                                bool en_suelo_antes)
+{
+    if (!map || !map->cargado || map->face_count == 0) { return false; }
+    if (!en_suelo_antes) { return false; }
+
+    /* Calcular dirección de movimiento en XZ desde wish_dir (dirección
+     * deseada normalizada que viene del input). Solo step-up si hay
+     * movimiento horizontal. */
+    if (!wish_dir || (wish_dir->x == 0.0f && wish_dir->z == 0.0f)) {
+        return false;
+    }
+
+    Vec3 dir_xz = { wish_dir->x, 0.0f, wish_dir->z };
+    f32  len    = sqrtf(dir_xz.x * dir_xz.x + dir_xz.z * dir_xz.z);
+    if (len < 0.001f) { return false; }
+    dir_xz.x /= len;
+    dir_xz.z /= len;
+
+    /* Origen del rayo: un poco adelante del jugador y 18 u arriba */
+    Vec3 orig = {
+        pos->x + dir_xz.x * STEP_UP_AHEAD_DIST,
+        pos->y + SV_STEPSIZE,
+        pos->z + dir_xz.z * STEP_UP_AHEAD_DIST
+    };
+    Vec3 dir  = { 0.0f, -1.0f, 0.0f };
+
+    f32 best_t = SV_STEPSIZE + 2.0f;  /* un poco más que 18 para tolerancia */
+
+    for (i32 fi = 0; fi < map->face_count; fi++) {
+        const MapFace *face  = &map->faces[fi];
+        u32            base  = face->vertex_start;
+        u32            count = face->vertex_count;
+
+        for (u32 ti = 0; ti + 2 < count; ti += 3) {
+            const MapVertex *va = &map->vertices[base + ti + 0];
+            const MapVertex *vb = &map->vertices[base + ti + 1];
+            const MapVertex *vc = &map->vertices[base + ti + 2];
+
+            Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
+            Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
+            Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+
+            f32 t;
+            Vec3 normal;
+            if (ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
+                if (normal.y > 0.0f && t < best_t) {
+                    best_t = t;
+                }
+            }
+        }
+    }
+
+    if (best_t < SV_STEPSIZE + 2.0f) {
+        f32 ground_y = orig.y - best_t;
+        f32 delta_y  = ground_y - pos->y;
+
+        /* Solo subir si el escalón está entre 0.5 y 18 u sobre los pies.
+         * 0.5 es el mismo umbral que collision_detectar_suelo usa para
+         * aterrizar (pos.y <= fh.y + 0.5). */
+        if (delta_y > 0.5f && delta_y <= SV_STEPSIZE) {
+            pos->y = ground_y;
+            return true;
+        }
+    }
+
+    return false;
 }

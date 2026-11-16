@@ -74,6 +74,11 @@ void phys_player_init(PhysPlayer *p, Vec3 spawn_pos)
 
 void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
 {
+    /* Guardar estado de suelo ANTES de procesar el tick para el step-up:
+     * el step-up solo funciona si el jugador YA estaba en suelo al
+     * empezar el tick (no si aterriza en este mismo tick). */
+    bool en_suelo_antes = p->en_suelo;
+
     p->agachado  = input.agacharse;
     p->caminando = input.caminar;
 
@@ -130,6 +135,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
      * Debe correr ANTES de detectar suelo: recorta pos si este tick cruzó  *
      * una pared y proyecta vel para resbalar a lo largo de ella.           */
     collision_bloquear_pared(map, &p->pos, &p->vel, dt);
+
+    /* ── Step-up (5a-3): subir escalones de hasta 18 u sin saltar ───────── *
+     * Solo si estaba en suelo ANTES del tick y hay movimiento en XZ.
+     * Lanza rayo desde (pos + wish_dir*20 + (0,18,0)) hacia abajo.
+     * Si hay suelo entre pos.y+0.5 y pos.y+18 → pos.y = suelo_y, vel.y = 0. */
+    collision_intentar_step_up(map, &p->pos, &input.wish_dir, en_suelo_antes);
 
     /* ── Detectar suelo real contra geometría del mapa ───────────────── *
      * Reemplaza el suelo temporal "if (pos.y <= 0)".                    *
