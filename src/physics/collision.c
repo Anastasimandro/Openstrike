@@ -174,9 +174,13 @@ bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt)
     if (hacia_pared >= 0.0f) { return false; }
 
     /* Recortar la posición: dejar RADIO_JUGADOR de distancia a la pared.
-     * dir.y = 0 → la Y no cambia (la gravedad y el suelo siguen su curso). */
+     * dir.y = 0 → la Y no cambia (la gravedad y el suelo siguen su curso).
+     * Si el jugador ya está a menos de su radio (residuo de ticks
+     * anteriores — la aceleración hacia la pared avanza ~0.3 u/tick),
+     * recorte es negativo y lo empuja de vuelta a 16 u. Sin esto el
+     * jugador gotea lentamente a través de la pared (verificado con el
+     * test físico del CI). */
     f32 recorte = best_t - RADIO_JUGADOR;
-    if (recorte < 0.0f) { recorte = 0.0f; }
     pos->x = orig.x + dir.x * recorte;
     pos->z = orig.z + dir.z * recorte;
 
