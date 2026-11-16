@@ -177,6 +177,20 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         p->pos.y    = fh.y;
         p->vel.y    = 0.0f;
         p->en_suelo = true;
+
+        /* ── Suelo pendiente (5b): gravedad sobre el plano de la rampa ── *
+         * Si el suelo está inclinado (normal no es vertical), proyecta    *
+         * la gravedad sobre el plano para deslizar cuesta abajo y poder   *
+         * subir cuesta arriba caminando. Sin vibraciones ni atascos.      */
+        if (fh.normal.y < 0.95f) {
+            Vec3 gravedad = { 0.0f, -SV_GRAVITY, 0.0f };
+            f32  g_n      = vec3_dot(gravedad, fh.normal);
+            Vec3 g_tan    = vec3_sub(gravedad, vec3_scale(fh.normal, g_n));
+            p->vel.x += g_tan.x * dt;
+            p->vel.z += g_tan.z * dt;
+            p->pos.y  = fh.y;
+            p->vel.y  = 0.0f;
+        }
     } else {
         p->en_suelo = false;
     }

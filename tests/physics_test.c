@@ -86,6 +86,9 @@ int main(void)
     simular("esquina noroeste (45° a ambas paredes)",
             vec3_norm((Vec3){ -1.0f, 0.0f, -1.0f }), 320);
 
+    /* Rampa (5b): caminar hacia +x sube la rampa sin saltar (y aumenta) */
+    simular("rampa hacia arriba (+x)", (Vec3){ 1.0f, 0.0f, 0.0f }, 200);
+
     if (g_fallos > 0) {
         printf("RESULTADO: %d fallo(s)\n", g_fallos);
         return 1;
