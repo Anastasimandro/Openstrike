@@ -31,9 +31,10 @@
                                    /* velocidad deseada se clampea a 30 u/s:   */
                                    /* solo el strafe bien medido gana velocidad*/
 #define BHOP_MAX_SPEED    320.0f   /* cap XZ continuo en aire — 28% sobre RUN  */
-#define BHOP_GRACE_TICKS      4    /* ticks tras aterrizar sin fricción:       */
-                                   /* saltar dentro de la ventana (~62 ms)     */
-                                   /* conserva la velocidad — bhop habilidoso  */
+#define BHOP_GRACE_TICKS      6    /* ticks tras aterrizar sin fricción:       */
+                                   /* saltar dentro de la ventana (~94 ms)     */
+                                   /* conserva la velocidad — timing exigente  */
+                                   /* pero aprendible (sin autobhop)           */
 #define SV_STEPSIZE        18.0f
 #define SPEED_RUN         250.0f
 #define SPEED_WALK        130.0f

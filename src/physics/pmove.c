@@ -81,7 +81,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         /* ── En suelo: fricción + movimiento ──────────────────────────── *
          * Ventana de gracia bhop: los primeros BHOP_GRACE_TICKS tras      *
          * aterrizar NO aplican fricción. Saltar dentro de esa ventana     *
-         * (~62 ms) conserva la velocidad; llegar tarde ya la perdió       *
+         * (~94 ms) conserva la velocidad; llegar tarde ya la perdió       *
          * (castigo por timing impreciso). Andar normal no se beneficia:   *
          * la aceleración en suelo iguala a SPEED_RUN de todos modos.      */
         if (p->ticks_en_suelo > BHOP_GRACE_TICKS) {
