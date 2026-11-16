@@ -181,15 +181,38 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         /* ── Suelo pendiente (5b): gravedad sobre el plano de la rampa ── *
          * Si el suelo está inclinado (normal no es vertical), proyecta    *
          * la gravedad sobre el plano para deslizar cuesta abajo y poder   *
-         * subir cuesta arriba caminando. Sin vibraciones ni atascos.      */
+         * subir cuesta arriba caminando. Solo se aplica si hay movimiento *
+         * (wish_dir o velocidad XZ); si el jugador está quieto en la      *
+         * rampa, la fricción lo detiene para que no se deslice solo.      *
+         * Sin vibraciones ni atascos.                                     */
         if (fh.normal.y < 0.95f) {
-            Vec3 gravedad = { 0.0f, -SV_GRAVITY, 0.0f };
-            f32  g_n      = vec3_dot(gravedad, fh.normal);
-            Vec3 g_tan    = vec3_sub(gravedad, vec3_scale(fh.normal, g_n));
-            p->vel.x += g_tan.x * dt;
-            p->vel.z += g_tan.z * dt;
+            f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+            if (vec3_len(input.wish_dir) > 0.001f || vel_xz > 0.1f) {
+                Vec3 gravedad = { 0.0f, -SV_GRAVITY, 0.0f };
+                f32  g_n      = vec3_dot(gravedad, fh.normal);
+                Vec3 g_tan    = vec3_sub(gravedad, vec3_scale(fh.normal, g_n));
+                p->vel.x += g_tan.x * dt;
+                p->vel.z += g_tan.z * dt;
+            } else {
+                aplicar_friccion(p, dt);
+            }
             p->pos.y  = fh.y;
             p->vel.y  = 0.0f;
+
+            /* ── Salto automático al aterrizar (jump buffer en rampa) ─── *
+             * Si se pulió SPACE justo antes de tocar suelo (buffer con    *
+             * ticks restantes), salta en este mismo tick en vez de esperar*
+             * al siguiente. Hace que el salto automático sea responsivo   *
+             * también al aterrizar en superficies inclinadas.             */
+            if (p->jump_buffer_ticks > 0) {
+                p->vel.y             = JUMP_IMPULSE;
+                p->en_suelo          = false;
+                p->jump_buffer_ticks = 0;
+                if (vec3_len(input.wish_dir) > 0.001f) {
+                    acelerar(p, input.wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
+                }
+                cap_velocidad_bhop(p);
+            }
         }
     } else {
         p->en_suelo = false;
