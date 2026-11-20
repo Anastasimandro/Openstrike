@@ -71,15 +71,17 @@ bool collision_ray_triangulo(Vec3 orig, Vec3 dir,
 
 #define BARY_TOLERANCE 1e-3f
 
-/* Test if point on plane is inside triangle (with BARY_TOLERANCE) */
-static inline bool point_in_tri(Vec3 p, Vec3 v0, Vec3 v1, Vec3 v2, Vec3 n)
+/* Test if point on plane is inside triangle with radius tolerance.
+ * For sphere sweeps, the contact point can be up to 'radius' outside
+ * triangle edges and still be a valid hit (sphere surface touches edges). */
+static inline bool point_in_tri_radius(Vec3 p, Vec3 v0, Vec3 v1, Vec3 v2, Vec3 n, f32 radius)
 {
     Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(p, v0));
     Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(p, v1));
     Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(p, v2));
-    return vec3_dot(n, c0) >= -BARY_TOLERANCE &&
-           vec3_dot(n, c1) >= -BARY_TOLERANCE &&
-           vec3_dot(n, c2) >= -BARY_TOLERANCE;
+    return vec3_dot(n, c0) >= -radius &&
+           vec3_dot(n, c1) >= -radius &&
+           vec3_dot(n, c2) >= -radius;
 }
 
 static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
@@ -106,10 +108,11 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     if (dist_start < -radius && dist_end < -radius) return false;
 
     /* Caso 1: La esfera YA toca/penetra el plano en start (|dist_start| <= radius).
-     * Punto de contacto EN EL PLANO: sphere_start - n * dist_start. */
+     * Punto de contacto EN EL PLANO: sphere_start - n * dist_start.
+     * Usar tolerancia radius: la esfera puede tocar aristas desde fuera. */
     if (fabsf(dist_start) <= radius + 1e-4f) {
         Vec3 plane_contact = vec3_sub(sphere_start, vec3_scale(n, dist_start));
-        if (point_in_tri(plane_contact, v0, v1, v2, n)) {
+        if (point_in_tri_radius(plane_contact, v0, v1, v2, n, radius)) {
             *t_out = 0.0f;
             if (normal_out) *normal_out = n;
             return true;
@@ -135,8 +138,8 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     f32 dist_at_t = dist_start + (dist_end - dist_start) * t_plane;
     Vec3 plane_contact = vec3_sub(sphere_at_t, vec3_scale(n, dist_at_t));
 
-    /* Test baricéntrico: ¿punto en el plano está dentro del triángulo? */
-    if (!point_in_tri(plane_contact, v0, v1, v2, n)) {
+    /* Test baricéntrico con tolerancia radius */
+    if (!point_in_tri_radius(plane_contact, v0, v1, v2, n, radius)) {
         return false;
     }
 
