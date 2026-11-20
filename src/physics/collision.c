@@ -324,20 +324,23 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (!map || !map->cargado || map->face_count == 0) return result;
 
-    f32 radius = 0.1f;  // rayo delgado para detección precisa de suelo
-    f32 half_height = 0.0f;
+    /* Usar la cápsula real del jugador para detectar suelo correctamente en rampas.
+     * Radio = RADIO_JUGADOR, half_height = (crouch_height - 2*radius)/2. */
+    f32 radius = RADIO_JUGADOR;
+    f32 capsule_h = crouch_height - 2.0f * radius;
+    if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
+    f32 half_height = capsule_h * 0.5f;
 
+    /* Barrido hacia abajo: desde los pies actuales hasta un poco más abajo del step-up */
+    f32 down_dist = crouch_height * 0.5f + SV_STEPSIZE + 2.0f;
     Vec3 start = pos;
-    Vec3 end = { pos.x, pos.y - (crouch_height * 0.5f + SV_STEPSIZE + 2.0f), pos.z };
+    Vec3 end = { pos.x, pos.y - down_dist, pos.z };
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         result.hit = true;
-        /* hit.pos es la posición de los PIES en el impacto (start/end son pies).
-         * Para barrido de esfera (half_height=0): la esfera toca el suelo en
-         * sphere_center.y = floor_y + radius. Los pies están en floor_y.
-         * hit.pos.y ya es la altura de los pies = floor_y. */
+        /* hit.pos es la posición de los PIES en el impacto. */
         result.y = hit.pos.y;
         result.normal = hit.normal;
     }
