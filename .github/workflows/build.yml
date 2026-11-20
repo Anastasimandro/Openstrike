@@ -11,7 +11,7 @@ jobs:
       - name: Instalar dependencias
         run: |
           sudo apt-get update -y --fix-missing
-          sudo apt-get install -y libsdl2-dev libgl-dev
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libgl-dev
       - name: Descargar stb_image.h
         run: curl -L https://raw.githubusercontent.com/nothings/stb/master/stb_image.h -o csrc/stb_image.h
       - name: Build Linux x64
@@ -38,13 +38,20 @@ jobs:
           sudo apt-get install -y mingw-w64
       - name: Descargar stb_image.h
         run: curl -L https://raw.githubusercontent.com/nothings/stb/master/stb_image.h -o csrc/stb_image.h
+      - name: Descargar SDL2_mixer para Windows
+        run: |
+          curl -L https://github.com/libsdl-org/SDL_mixer/releases/download/release-2.8.0/SDL2_mixer-devel-2.8.0-mingw.tar.gz -o SDL2_mixer.tar.gz
+          tar -xzf SDL2_mixer.tar.gz
+          mkdir -p deps/windows/SDL2_mixer/x86_64-w64-mingw32
+          cp -r SDL2_mixer-2.8.0/x86_64-w64-mingw32/* deps/windows/SDL2_mixer/x86_64-w64-mingw32/
       - name: Build Windows x64
         run: |
           cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-win
-      - name: Copiar SDL2.dll y assets
+      - name: Copiar SDL2.dll, SDL2_mixer.dll y assets
         run: |
           cp deps/windows/SDL2/x86_64-w64-mingw32/bin/SDL2.dll build-win/
+          cp deps/windows/SDL2_mixer/x86_64-w64-mingw32/bin/SDL2_mixer.dll build-win/
           cp -r assets build-win/assets
       - uses: actions/upload-artifact@v4
         with:

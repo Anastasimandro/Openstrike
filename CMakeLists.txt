@@ -33,17 +33,20 @@ if(WIN32)
     target_link_options(openstrike PRIVATE -mwindows)
     target_include_directories(openstrike PRIVATE
         deps/windows/SDL2/x86_64-w64-mingw32/include
+        deps/windows/SDL2_mixer/x86_64-w64-mingw32/include
     )
     target_link_directories(openstrike PRIVATE
         deps/windows/SDL2/x86_64-w64-mingw32/lib
+        deps/windows/SDL2_mixer/x86_64-w64-mingw32/lib
     )
     target_link_libraries(openstrike
-        SDL2 opengl32
+        SDL2 SDL2_mixer opengl32
         gdi32 setupapi ole32 oleaut32 imm32 version
         ws2_32 winmm
     )
 else()
     find_package(SDL2 REQUIRED)
-    target_include_directories(openstrike PRIVATE ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(openstrike ${SDL2_LIBRARIES} GL m)
+    find_package(SDL2_mixer REQUIRED)
+    target_include_directories(openstrike PRIVATE ${SDL2_INCLUDE_DIRS} ${SDL2_MIXER_INCLUDE_DIRS})
+    target_link_libraries(openstrike ${SDL2_LIBRARIES} ${SDL2_MIXER_LIBRARIES} GL m)
 endif()

@@ -8,7 +8,7 @@
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
@@ -20,9 +20,11 @@
 #include <stdio.h>
 #include "types.h"
 #include "renderer/renderer.h"
+#include "renderer/textures.h"
 #include "physics/pmove.h"     /* trae collision.h -> map.h transitivamente */
 #include "map/map.h"
 #include "map/map_zones.h"
+#include "audio/audio.h"
 
 /* ── Constantes ───────────────────────────────────────────────────────────── */
 #define TICK_RATE   64
@@ -60,7 +62,7 @@ static bool          g_espacio_anterior = false; /* flanco de subida de SPACE */
 
 static int init(void)
 {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 0;
     }
@@ -100,6 +102,12 @@ static int init(void)
         return 0;
     }
 
+    /* Inicializar gestor de texturas (requiere contexto GL activo) */
+    if (!texturas_init()) {
+        fprintf(stderr, "texturas_init failed\n");
+        return 0;
+    }
+
     if (!map_cargar(&g_map, "assets/maps/sala_prueba.json")) {
         fprintf(stderr, "map_cargar failed\n");
         return 0;
@@ -108,6 +116,27 @@ static int init(void)
     if (!renderer_cargar_mapa(&g_map)) {
         fprintf(stderr, "renderer_cargar_mapa failed\n");
         return 0;
+    }
+
+    /* Cargar texturas del mapa */
+    if (!texturas_cargar_mapa(&g_map, "assets/textures/")) {
+        fprintf(stderr, "texturas_cargar_mapa failed\n");
+        return 0;
+    }
+
+    /* Inicializar audio (Sistema 6a) */
+    if (!audio_init()) {
+        fprintf(stderr, "audio_init failed\n");
+        return 0;
+    }
+
+    /* Cargar y reproducir un WAV de prueba */
+    void *test_wav = audio_cargar_wav("assets/sounds/test.wav");
+    if (test_wav) {
+        audio_reproducir(test_wav);
+        audio_liberar_chunk(test_wav);
+    } else {
+        fprintf(stderr, "Aviso: no se pudo cargar assets/sounds/test.wav (el juego continúa)\n");
     }
 
     phys_player_init(&g_player, (Vec3){ 0.0f, 0.0f, 0.0f });
@@ -233,6 +262,8 @@ int main(int argc, char *argv[])
         render((f32)(accumulator / TICK_MS));
     }
 
+    audio_shutdown();
+    texturas_shutdown();
     renderer_shutdown();
     SDL_GL_DeleteContext(g_gl_ctx);
     SDL_DestroyWindow(g_window);
