@@ -315,14 +315,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         fh.y = fh_predictive.y;  // usar la altura real de la rampa en la posición predictiva
     }
 
-    /* En rampa, vel.y > 0 al subir; usar dot con normal en vez de vel.y */
-    bool moving_into_floor = (p->vel.y <= 0.0f);
-    if (fh.hit && fh.normal.y < 0.95f) {
-        f32 vn = vec3_dot(p->vel, fh.normal);
-        moving_into_floor = (vn <= 0.01f);  // permite componente tangencial (≈0)
-    }
-
-    if (fh.hit && p->pos.y <= fh.y + 0.5f && moving_into_floor) {
+    if (fh.hit && p->pos.y <= fh.y + 0.5f && p->vel.y <= 0.0f) {
         p->pos.y    = fh.y;
         p->vel.y    = 0.0f;
         p->en_suelo = true;
