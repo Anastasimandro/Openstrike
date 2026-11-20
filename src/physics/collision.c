@@ -439,15 +439,16 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
 
 FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos, f32 crouch_height)
 {
+    (void)crouch_height;
     FloorHit result = {0};
 
     if (!map || !map->cargado || map->face_count == 0) return result;
 
-    /* GoldSrc-style: raycast hacia abajo desde los pies del jugador.
-     * Usar broadphase para filtrar triángulos candidatos, luego ray-triangle exacto. */
+    /* GoldSrc-style: raycast hacia abajo desde ligeramente encima de los pies.
+     * Empezar 2 unidades arriba para evitar rechazo t=0 cuando el jugador está en el suelo. */
     f32 radius = RADIO_JUGADOR;
     f32 trace_dist = SV_STEPSIZE + 2.0f;  // distancia de detección (step height + margen)
-    Vec3 start = pos;
+    Vec3 start = { pos.x, pos.y + 2.0f, pos.z };
     Vec3 end = { pos.x, pos.y - trace_dist, pos.z };
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
@@ -456,7 +457,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
     u16 *face_indices = NULL;
     if (bp && bp->built) {
         Vec3 mins = { pos.x - radius, pos.y - trace_dist - radius, pos.z - radius };
-        Vec3 maxs = { pos.x + radius, pos.y + radius, pos.z + radius };
+        Vec3 maxs = { pos.x + radius, pos.y + 2.0f + radius, pos.z + radius };
         face_count = broadphase_query_aabb(bp, mins, maxs, g_bp_temp, BP_TEMP_MAX);
         face_indices = g_bp_temp;
     } else {
@@ -501,7 +502,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (hit_any) {
         result.hit = true;
-        result.y = pos.y - best_t * trace_dist;  // punto de impacto en Y
+        result.y = start.y - best_t * (trace_dist + 2.0f);  // punto de impacto en Y
         result.normal = best_normal;
     }
 
