@@ -43,6 +43,9 @@
 /* Umbral para considerar techo (normal.y < -esto) */
 #define TECHO_NORMAL_Y_MAX -0.7f
 
+/* Distancia extra para check de techo (margen de seguridad) */
+#define CEILING_CHECK_DIST 4.0f
+
 /* ────────────────────────────────────────────────────────────────────────── *
  * Möller–Trumbore: intersección rayo–triángulo (pública para raycast de balas,
  * comprobación de techo, etc.).                                            *

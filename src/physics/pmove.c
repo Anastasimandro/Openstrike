@@ -274,7 +274,6 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
     }
 
     /* ── Integrar posición ──────────────────────────────────────────────── */
-    Vec3 pos_antes = p->pos;
     p->pos = vec3_add(p->pos, vec3_scale(p->vel, dt));
 
     /* ── Bloquear paredes con swept capsule (slide) ─────────────────────── */

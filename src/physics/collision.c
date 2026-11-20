@@ -116,9 +116,11 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     return true;
 }
 
-static bool sweep_cylinder_tri(Vec3 cyl_start, Vec3 cyl_end, f32 radius, f32 half_height,
+static bool sweep_cylinder_tri(Vec3 cyl_start, Vec3 cyl_end, f32 radius, f32 half_height_unused,
                                 Vec3 v0, Vec3 v1, Vec3 v2,
                                 f32 *t_out, Vec3 *normal_out)
+{
+    (void)half_height_unused;
 {
     /* El cilindro es un segmento (eje) + radio.
      * Aproximación: testear intersección segmento-triángulo con radio expandido.
