@@ -32,10 +32,10 @@ static int g_fallos = 0;
 
 /* Simula 'ticks' ticks caminando con wish fijo y comprueba que el jugador
  * nunca sale de la sala ni se pega a la pared más que su radio. */
-static void simular(const char *nombre, Vec3 wish, int ticks)
+static void simular(const char *nombre, Vec3 wish, int ticks, Vec3 start_pos)
 {
     PhysPlayer p;
-    phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+    phys_player_init(&p, start_pos);
     p.en_suelo = true;
 
     PhysInput in = {0};
@@ -164,41 +164,43 @@ int main(void)
 
     printf("=== Tests de colision paredes (11 casos previos) ===\n");
 
-    /* 320 ticks = 5 s; a 250 u/s recorre 1250 u -- cruza la sala de sobra */
-    simular("recto hacia pared norte (z-)",  (Vec3){ 0.0f, 0.0f, -1.0f }, 320);
-    simular("diagonal 45° hacia pared norte",(Vec3){ 0.70710678f, 0.0f, -0.70710678f }, 320);
-    simular("recto hacia pared este (x+)",   (Vec3){ 1.0f, 0.0f, 0.0f }, 320);
-    simular("recto hacia pared sur (z+)",    (Vec3){ 0.0f, 0.0f, 1.0f }, 320);
-    simular("recto hacia pared oeste (x-)",  (Vec3){ -1.0f, 0.0f, 0.0f }, 320);
+    /* 320 ticks = 5 s; a 250 u/s recorre 1250 u -- cruza la sala de sobra.
+     * Iniciar en x=120 para tests +x/-x para evitar el bloque en x=[84,116] (radio 16 -> pasa en 132+).
+     * Los tests Z no necesitan cambio (bloque en z=[-16,16] no bloquea movimiento en Z desde z=0). */
+    simular("recto hacia pared norte (z-)",  (Vec3){ 0.0f, 0.0f, -1.0f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
+    simular("diagonal 45° hacia pared norte",(Vec3){ 0.70710678f, 0.0f, -0.70710678f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
+    simular("recto hacia pared este (x+)",   (Vec3){ 1.0f, 0.0f, 0.0f }, 320, (Vec3){ 120.0f, 0.0f, 0.0f });
+    simular("recto hacia pared sur (z+)",    (Vec3){ 0.0f, 0.0f, 1.0f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
+    simular("recto hacia pared oeste (x-)",  (Vec3){ -1.0f, 0.0f, 0.0f }, 320, (Vec3){ -120.0f, 0.0f, 0.0f });
 
     /* Casos que reprodujeron el bloqueo irregular (goteo en rozamiento):
      * movimiento casi paralelo a la pared con leve componente hacia dentro */
     simular("rasante pared norte (+x, 15° dentro)",
-            vec3_norm((Vec3){ 1.0f, 0.0f, -0.268f }), 320);
+            vec3_norm((Vec3){ 1.0f, 0.0f, -0.268f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
     simular("rasante pared oeste (-z, 15° dentro)",
-            vec3_norm((Vec3){ -0.268f, 0.0f, -1.0f }), 320);
+            vec3_norm((Vec3){ -0.268f, 0.0f, -1.0f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
     simular("rasante pared este (+z, 15° dentro)",
-            vec3_norm((Vec3){ 1.0f, 0.0f, 0.268f }), 320);
+            vec3_norm((Vec3){ 1.0f, 0.0f, 0.268f }), 320, (Vec3){ 120.0f, 0.0f, 0.0f });
     simular("diagonal suave hacia pared este",
-            vec3_norm((Vec3){ 1.0f, 0.0f, 0.5f }), 320);
+            vec3_norm((Vec3){ 1.0f, 0.0f, 0.5f }), 320, (Vec3){ 120.0f, 0.0f, 0.0f });
     simular("esquina noroeste (45° a ambas paredes)",
-            vec3_norm((Vec3){ -1.0f, 0.0f, -1.0f }), 320);
+            vec3_norm((Vec3){ -1.0f, 0.0f, -1.0f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
 
     /* Rampa (5b): caminar hacia +x sube la rampa sin saltar (y aumenta) */
-    simular("rampa hacia arriba (+x)", (Vec3){ 1.0f, 0.0f, 0.0f }, 200);
+    simular("rampa hacia arriba (+x)", (Vec3){ 1.0f, 0.0f, 0.0f }, 200, (Vec3){ 120.0f, 0.0f, 0.0f });
 
     printf("\n=== Tests de agachado (5c) ===\n");
 
     /* Test de transición agachado/levantado */
     simular_agachado("transicion agachado/levantado");
 
-    /* Test de techo bajo (solo documentado, no ejecutable sin mapa específico) */
+    /* Test de techo baja (solo documentado, no ejecutable sin mapa específico) */
     simular_techo_bajo("techo bajo bloquea levantarse");
 
     /* Test de movimiento agachado contra paredes */
     {
         PhysPlayer p;
-        phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+        phys_player_init(&p, (Vec3){ 120.0f, 0.0f, 0.0f });
         p.en_suelo = true;
 
         PhysInput in = {0};
@@ -225,7 +227,7 @@ int main(void)
     /* Test de step-up agachado (debe funcionar igual) */
     {
         PhysPlayer p;
-        phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+        phys_player_init(&p, (Vec3){ 120.0f, 0.0f, 0.0f });
         p.en_suelo = true;
 
         PhysInput in = {0};
@@ -281,7 +283,7 @@ int main(void)
     /* Test: step-up usa dirección de velocidad (no wish_dir) */
     {
         PhysPlayer p;
-        phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+        phys_player_init(&p, (Vec3){ 120.0f, 0.0f, 0.0f });
         p.en_suelo = true;
 
         PhysInput in = {0};
