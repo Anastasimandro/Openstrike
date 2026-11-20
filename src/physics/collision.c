@@ -264,15 +264,19 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
     u16 *face_indices = NULL;
 
     if (bp && bp->built) {
-        /* Broadphase: query segment start→end con AABB expandido por radius */
+        /* Broadphase: query segment start→end con AABB que cubre TODA la cápsula.
+         * Cápsula: cilindro de altura 2*half_height + 2 hemisferios de radio.
+         * Altura total = 2*half_height + 2*radius = crouch_height (aprox).
+         * Extensión vertical: [min(start.y, end.y) - radius, max(start.y, end.y) + 2*half_height + 2*radius] */
+        f32 capsule_total_h = 2.0f * half_height + 2.0f * radius;
         Vec3 mins = {
             fminf(start.x, end.x) - radius,
-            fminf(start.y, end.y) - radius - half_height,
+            fminf(start.y, end.y) - radius,
             fminf(start.z, end.z) - radius
         };
         Vec3 maxs = {
             fmaxf(start.x, end.x) + radius,
-            fmaxf(start.y, end.y) + radius + half_height,
+            fmaxf(start.y, end.y) + capsule_total_h + radius,
             fmaxf(start.z, end.z) + radius
         };
         face_count = broadphase_query_aabb(bp, mins, maxs, g_bp_temp, BP_TEMP_MAX);
