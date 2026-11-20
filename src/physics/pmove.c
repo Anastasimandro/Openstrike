@@ -244,17 +244,16 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     Vec3 ramp_normal = normal_suelo_antes;
     bool on_ramp = en_suelo_antes && ramp_normal.y < 0.95f && ramp_normal.y > 0.001f;
 
-    /* Predictive: si vamos a movernos en XZ, chequear suelo en pos futura */
+    /* Predictive: si vamos a movernos en XZ, chequear suelo en pos futura.
+     * Usar wish_speed (no vel actual) para mirar más lejos durante aceleración. */
     if (en_suelo_antes && tiene_wish) {
-        f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
-        if (vel_xz > 0.1f) {
-            Vec3 next_pos = { p->pos.x + p->vel.x * dt, p->pos.y, p->pos.z + p->vel.z * dt };
-            FloorHit fh_next = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
-            if (fh_next.hit && fh_next.normal.y < 0.95f && fh_next.normal.y > 0.001f) {
-                /* Próximo tick estaremos en rampa: usar esa normal YA */
-                ramp_normal = fh_next.normal;
-                on_ramp = true;
-            }
+        f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
+        Vec3 next_pos = { p->pos.x + wish_dir.x * lookahead, p->pos.y, p->pos.z + wish_dir.z * lookahead };
+        FloorHit fh_next = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
+        if (fh_next.hit && fh_next.normal.y < 0.95f && fh_next.normal.y > 0.001f) {
+            /* Próximo tick estaremos en rampa: usar esa normal YA */
+            ramp_normal = fh_next.normal;
+            on_ramp = true;
         }
     }
 

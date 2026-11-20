@@ -334,9 +334,17 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
             if (sweep_sphere_tri(sph_bot_start, sph_bot_end, radius, v0, v1, v2, &t, &n)) {
                 bool better = false;
                 if (sweep_down) {
-                    /* Downward sweep: prefer highest hit.pos.y (first surface hit going down) */
+                    /* Downward sweep: prefer highest hit.pos.y.
+                     * Tie-breaker: prefer sloped surfaces (normal.y < 0.99) over flat floor (normal.y ≈ 1). */
                     Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), t));
-                    if (!best.hit || hit_pos.y > best.pos.y + 1e-4f) better = true;
+                    if (!best.hit) {
+                        better = true;
+                    } else if (hit_pos.y > best.pos.y + 1e-4f) {
+                        better = true;
+                    } else if (fabsf(hit_pos.y - best.pos.y) <= 1e-4f) {
+                        /* Same height: prefer ramp (lower normal.y) over flat floor */
+                        if (n.y < best.normal.y - 1e-4f) better = true;
+                    }
                 } else {
                     if (t < best.t) better = true;
                 }
@@ -354,7 +362,13 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                     bool better = false;
                     if (sweep_down) {
                         Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), t));
-                        if (!best.hit || hit_pos.y > best.pos.y + 1e-4f) better = true;
+                        if (!best.hit) {
+                            better = true;
+                        } else if (hit_pos.y > best.pos.y + 1e-4f) {
+                            better = true;
+                        } else if (fabsf(hit_pos.y - best.pos.y) <= 1e-4f) {
+                            if (n.y < best.normal.y - 1e-4f) better = true;
+                        }
                     } else {
                         if (t < best.t) better = true;
                     }
@@ -372,7 +386,13 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                 bool better = false;
                 if (sweep_down) {
                     Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), t));
-                    if (!best.hit || hit_pos.y > best.pos.y + 1e-4f) better = true;
+                    if (!best.hit) {
+                        better = true;
+                    } else if (hit_pos.y > best.pos.y + 1e-4f) {
+                        better = true;
+                    } else if (fabsf(hit_pos.y - best.pos.y) <= 1e-4f) {
+                        if (n.y < best.normal.y - 1e-4f) better = true;
+                    }
                 } else {
                     if (t < best.t) better = true;
                 }
