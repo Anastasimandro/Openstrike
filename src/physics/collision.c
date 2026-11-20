@@ -71,6 +71,17 @@ bool collision_ray_triangulo(Vec3 orig, Vec3 dir,
 
 #define BARY_TOLERANCE 1e-3f
 
+/* Test if point on plane is inside triangle (with BARY_TOLERANCE) */
+static inline bool point_in_tri(Vec3 p, Vec3 v0, Vec3 v1, Vec3 v2, Vec3 n)
+{
+    Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(p, v0));
+    Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(p, v1));
+    Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(p, v2));
+    return vec3_dot(n, c0) >= -BARY_TOLERANCE &&
+           vec3_dot(n, c1) >= -BARY_TOLERANCE &&
+           vec3_dot(n, c2) >= -BARY_TOLERANCE;
+}
+
 static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
                               Vec3 v0, Vec3 v1, Vec3 v2,
                               f32 *t_out, Vec3 *normal_out)
@@ -93,17 +104,6 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     /* Si ambos puntos están del mismo lado y fuera del radio, no hay cruce */
     if (dist_start > radius && dist_end > radius) return false;
     if (dist_start < -radius && dist_end < -radius) return false;
-
-    /* Helper: test if point on plane is inside triangle (with BARY_TOLERANCE) */
-    static inline bool point_in_tri(Vec3 p, Vec3 v0, Vec3 v1, Vec3 v2, Vec3 n)
-    {
-        Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(p, v0));
-        Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(p, v1));
-        Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(p, v2));
-        return vec3_dot(n, c0) >= -BARY_TOLERANCE &&
-               vec3_dot(n, c1) >= -BARY_TOLERANCE &&
-               vec3_dot(n, c2) >= -BARY_TOLERANCE;
-    }
 
     /* Caso 1: La esfera YA toca/penetra el plano en start (|dist_start| <= radius).
      * Punto de contacto EN EL PLANO: sphere_start - n * dist_start. */
