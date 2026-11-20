@@ -396,6 +396,14 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
             break;
         }
 
+        /* Ignorar choques con suelo (normal.y > 0.7) y techo (normal.y < -0.7).
+         * Solo procesar paredes verticales (|normal.y| <= 0.7). */
+        if (hit.normal.y > 0.7f || hit.normal.y < -0.7f) {
+            /* No es pared: dejar que la integración normal + detección de suelo lo maneje. */
+            *out_pos = end;
+            break;
+        }
+
         /* Impacto en t: mover hasta el contacto + pequeño epsilon */
         f32 move_t = hit.t - SWEEP_EPSILON;
         if (move_t < 0.0f) move_t = 0.0f;
