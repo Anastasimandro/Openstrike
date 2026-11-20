@@ -72,16 +72,17 @@ bool collision_ray_triangulo(Vec3 orig, Vec3 dir,
 #define BARY_TOLERANCE 1e-3f
 
 /* Test if point on plane is inside triangle with radius tolerance.
- * For sphere sweeps, the contact point can be up to 'radius' outside
- * triangle edges and still be a valid hit (sphere surface touches edges). */
+ * Cross product magnitude = |edge| * distance_to_edge.
+ * To allow distance up to 'radius', tolerance = radius * typical_edge_len (~100). */
 static inline bool point_in_tri_radius(Vec3 p, Vec3 v0, Vec3 v1, Vec3 v2, Vec3 n, f32 radius)
 {
     Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(p, v0));
     Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(p, v1));
     Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(p, v2));
-    return vec3_dot(n, c0) >= -radius &&
-           vec3_dot(n, c1) >= -radius &&
-           vec3_dot(n, c2) >= -radius;
+    f32 tol = radius * 100.0f;  // ~edge length scale
+    return vec3_dot(n, c0) >= -tol &&
+           vec3_dot(n, c1) >= -tol &&
+           vec3_dot(n, c2) >= -tol;
 }
 
 static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
