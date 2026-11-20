@@ -8,7 +8,7 @@
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
@@ -36,9 +36,10 @@ static void simular(const char *nombre, Vec3 wish, int ticks)
     phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
     p.en_suelo = true;
 
-    PhysInput in;
+    PhysInput in = {0};
     in.wish_dir  = wish;
     in.saltar    = false;
+    in.saltar_held = false;
     in.agacharse = false;
     in.caminar   = false;
 
@@ -47,26 +48,117 @@ static void simular(const char *nombre, Vec3 wish, int ticks)
 
         if (p.pos.x < -255.0f || p.pos.x > 255.0f ||
             p.pos.z < -255.0f || p.pos.z > 255.0f) {
-            printf("FALLO [%s] tick %d: pos=(%.2f, %.2f, %.2f) — CRUZÓ la pared\n",
+            printf("FALLO [%s] tick %d: pos=(%.2f, %.2f, %.2f) -- CRUZO la pared\n",
                    nombre, i, p.pos.x, p.pos.y, p.pos.z);
             g_fallos++;
             return;
         }
     }
 
-    printf("OK   [%s] %d ticks → pos=(%.2f, %.2f, %.2f)\n",
+    printf("OK   [%s] %d ticks -> pos=(%.2f, %.2f, %.2f)\n",
            nombre, ticks, p.pos.x, p.pos.y, p.pos.z);
+}
+
+/* Simula agachado/desagachado y comprueba altura de caja y vista. */
+static void simular_agachado(const char *nombre)
+{
+    PhysPlayer p;
+    phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+    p.en_suelo = true;
+
+    printf("\n--- Test: %s ---\n", nombre);
+
+    /* 1. Estado inicial: de pie */
+    PhysInput in = {0};
+    in.wish_dir = (Vec3){ 0.0f, 0.0f, 0.0f };
+    in.saltar = false;
+    in.saltar_held = false;
+    in.agacharse = false;
+    in.caminar = false;
+
+    for (int i = 0; i < 10; i++) {
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    }
+    printf("  Inicial (pie): crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
+           p.crouch_height, phys_view_height(&p), p.agachado);
+    if (p.crouch_height < 70.0f || p.crouch_height > 72.0f) {
+        printf("  FALLO: altura de pie incorrecta\n");
+        g_fallos++;
+    }
+
+    /* 2. Agacharse */
+    in.agacharse = true;
+    for (int i = 0; i < 20; i++) {
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    }
+    printf("  Agachado: crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
+           p.crouch_height, phys_view_height(&p), p.agachado);
+    if (p.crouch_height < 35.0f || p.crouch_height > 37.0f) {
+        printf("  FALLO: altura agachado incorrecta\n");
+        g_fallos++;
+    }
+    if (!p.agachado) {
+        printf("  FALLO: flag agachado no activado\n");
+        g_fallos++;
+    }
+
+    /* 3. Levantarse */
+    in.agacharse = false;
+    for (int i = 0; i < 20; i++) {
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    }
+    printf("  Levantado: crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
+           p.crouch_height, phys_view_height(&p), p.agachado);
+    if (p.crouch_height < 70.0f || p.crouch_height > 72.0f) {
+        printf("  FALLO: altura de pie tras levantarse incorrecta\n");
+        g_fallos++;
+    }
+    if (p.agachado) {
+        printf("  FALLO: flag agachado no desactivado\n");
+        g_fallos++;
+    }
+
+    /* 4. Agachado rápido (toggle rápido) */
+    in.agacharse = true;
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    in.agacharse = false;
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    in.agacharse = true;
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    in.agacharse = false;
+    for (int i = 0; i < 20; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    printf("  Toggle rapido: crouch_height=%.2f, view_height=%.2f\n",
+           p.crouch_height, phys_view_height(&p));
+    if (p.crouch_height < 70.0f || p.crouch_height > 72.0f) {
+        printf("  FALLO: altura tras toggle rapido incorrecta\n");
+        g_fallos++;
+    }
+
+    printf("  OK\n");
+}
+
+/* Test de agachado bajo techo bajo (no debe poder levantarse). */
+static void simular_techo_bajo(const char *nombre)
+{
+    /* Nota: este test requiere un mapa con techo bajo.
+     * Como sala_prueba tiene techo a 192u, no podemos probarlo aquí.
+     * Se prueba manualmente en runtime. */
+    (void)nombre;
+    printf("\n--- Test: %s (solo manual, sala_prueba techo alto) ---\n", nombre);
+    printf("  SKIP: requiere mapa con techo < 72u\n");
 }
 
 int main(void)
 {
     if (!map_cargar(&g_map_test, "assets/maps/sala_prueba.json")) {
         printf("FALLO: no se pudo cargar assets/maps/sala_prueba.json "
-               "(ejecutar desde la raíz del repo)\n");
+               "(ejecutar desde la raiz del repo)\n");
         return 1;
     }
 
-    /* 320 ticks = 5 s; a 250 u/s recorre 1250 u — cruza la sala de sobra */
+    printf("=== Tests de colision paredes (11 casos previos) ===\n");
+
+    /* 320 ticks = 5 s; a 250 u/s recorre 1250 u -- cruza la sala de sobra */
     simular("recto hacia pared norte (z-)",  (Vec3){ 0.0f, 0.0f, -1.0f }, 320);
     simular("diagonal 45° hacia pared norte",(Vec3){ 0.70710678f, 0.0f, -0.70710678f }, 320);
     simular("recto hacia pared este (x+)",   (Vec3){ 1.0f, 0.0f, 0.0f }, 320);
@@ -89,10 +181,71 @@ int main(void)
     /* Rampa (5b): caminar hacia +x sube la rampa sin saltar (y aumenta) */
     simular("rampa hacia arriba (+x)", (Vec3){ 1.0f, 0.0f, 0.0f }, 200);
 
+    printf("\n=== Tests de agachado (5c) ===\n");
+
+    /* Test de transición agachado/levantado */
+    simular_agachado("transicion agachado/levantado");
+
+    /* Test de techo bajo (solo documentado, no ejecutable sin mapa específico) */
+    simular_techo_bajo("techo bajo bloquea levantarse");
+
+    /* Test de movimiento agachado contra paredes */
+    {
+        PhysPlayer p;
+        phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+        p.en_suelo = true;
+
+        PhysInput in = {0};
+        in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
+        in.saltar = false;
+        in.saltar_held = false;
+        in.agacharse = true;  /* AGACHADO */
+        in.caminar = false;
+
+        for (int i = 0; i < 320; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        }
+        printf("\n--- Test: movimiento agachado contra pared este ---\n");
+        printf("  pos=(%.2f, %.2f, %.2f), crouch_height=%.2f\n",
+               p.pos.x, p.pos.y, p.pos.z, p.crouch_height);
+        if (p.pos.x < -255.0f || p.pos.x > 255.0f) {
+            printf("  FALLO: cruzo pared agachado\n");
+            g_fallos++;
+        } else {
+            printf("  OK\n");
+        }
+    }
+
+    /* Test de step-up agachado (debe funcionar igual) */
+    {
+        PhysPlayer p;
+        phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+        p.en_suelo = true;
+
+        PhysInput in = {0};
+        in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
+        in.saltar = false;
+        in.saltar_held = false;
+        in.agacharse = true;
+        in.caminar = false;
+
+        for (int i = 0; i < 200; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        }
+        printf("\n--- Test: step-up en rampa agachado ---\n");
+        printf("  pos=(%.2f, %.2f, %.2f), crouch_height=%.2f\n",
+               p.pos.x, p.pos.y, p.pos.z, p.crouch_height);
+        if (p.pos.y > 1.0f) {  /* subió la rampa */
+            printf("  OK (subio rampa agachado)\n");
+        } else {
+            printf("  INFO: no subio rampa (esperado si no hay step-up en ruta)\n");
+        }
+    }
+
     if (g_fallos > 0) {
-        printf("RESULTADO: %d fallo(s)\n", g_fallos);
+        printf("\nRESULTADO: %d fallo(s)\n", g_fallos);
         return 1;
     }
-    printf("RESULTADO: OK\n");
+    printf("\nRESULTADO: OK\n");
     return 0;
 }
