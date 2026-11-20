@@ -334,10 +334,11 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         result.hit = true;
-        /* hit.pos es el centro de la cápsula en el impacto.
-         * Para barrido de esfera (half_height=0): hit.pos = sphere_center.
-         * El suelo está en sphere_center.y - radius. */
-        result.y = hit.pos.y - radius;
+        /* hit.pos es la posición de los PIES en el impacto (start/end son pies).
+         * Para barrido de esfera (half_height=0): la esfera toca el suelo en
+         * sphere_center.y = floor_y + radius. Los pies están en floor_y.
+         * hit.pos.y ya es la altura de los pies = floor_y. */
+        result.y = hit.pos.y;
         result.normal = hit.normal;
     }
 
