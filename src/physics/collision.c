@@ -61,7 +61,7 @@ bool collision_ray_triangulo(Vec3 orig, Vec3 dir,
     return true;
 }
 
-/* ── Swept Sphere vs Triangle (para capsulas: cilindro + 2 esferas) ───────── *
+/* ── Swept Sphere vs Triangle (para cápsulas: cilindro + 2 esferas) ───────── *
  * Algoritmo: separar en 3 volúmenes primitivos:
  * 1. Esfera inferior (start + radius*up, end + radius*up)
  * 2. Cilindro central (segmento start+half_height*up → end+half_height*up, radio)
@@ -121,7 +121,7 @@ static bool sweep_cylinder_tri(Vec3 cyl_start, Vec3 cyl_end, f32 radius, f32 hal
                                 f32 *t_out, Vec3 *normal_out)
 {
     (void)half_height_unused;
-{
+
     /* El cilindro es un segmento (eje) + radio.
      * Aproximación: testear intersección segmento-triángulo con radio expandido.
      * Método: mover v0,v1,v2 hacia afuera por 'radius' a lo largo de sus normales de vértice
