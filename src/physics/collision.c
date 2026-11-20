@@ -336,7 +336,9 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                 if (sweep_down) {
                     /* Downward sweep: prefer highest hit.pos.y.
                      * EXTREME tie-breaker: prefer ANY sloped surface (normal.y < 0.99) over flat floor (normal.y > 0.99)
-                     * even if ramp is up to 5 units lower. This handles flat→ramp transitions. */
+                     * - if ramp is HIGHER (climbing up): always prefer it
+                     * - if ramp is LOWER (going down): prefer it if within 5 units
+                     * This handles flat↔ramp transitions in both directions. */
                     Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), t));
                     bool hit_is_ramp = n.y < 0.99f;
                     bool best_is_flat = best.hit && best.normal.y > 0.99f;
@@ -344,7 +346,9 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                     if (!best.hit) {
                         better = true;
                     } else if (hit_is_ramp && best_is_flat) {
-                        /* Always prefer ramp over flat floor, even if significantly lower */
+                        /* Prefer ramp over flat floor in both directions:
+                         * - climbing UP: ramp is higher (hit_pos.y > best.pos.y)
+                         * - going DOWN: ramp is lower but within 5 units */
                         if (hit_pos.y >= best.pos.y - 5.0f) better = true;
                     } else if (hit_pos.y > best.pos.y + 1e-4f) {
                         better = true;
@@ -374,6 +378,9 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                         if (!best.hit) {
                             better = true;
                         } else if (hit_is_ramp && best_is_flat) {
+                            /* Prefer ramp over flat floor in both directions:
+                             * - climbing UP: ramp is higher (hit_pos.y > best.pos.y)
+                             * - going DOWN: ramp is lower but within 5 units */
                             if (hit_pos.y >= best.pos.y - 5.0f) better = true;
                         } else if (hit_pos.y > best.pos.y + 1e-4f) {
                             better = true;
@@ -403,6 +410,9 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                     if (!best.hit) {
                         better = true;
                     } else if (hit_is_ramp && best_is_flat) {
+                        /* Prefer ramp over flat floor in both directions:
+                         * - climbing UP: ramp is higher (hit_pos.y > best.pos.y)
+                         * - going DOWN: ramp is lower but within 5 units */
                         if (hit_pos.y >= best.pos.y - 5.0f) better = true;
                     } else if (hit_pos.y > best.pos.y + 1e-4f) {
                         better = true;
