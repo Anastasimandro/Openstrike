@@ -258,6 +258,7 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
 {
     SweepHit best = {0};
     best.t = 1.0f + SWEEP_EPSILON;  // no hit
+    bool sweep_down = (start.y > end.y);  // detect downward sweep for floor detection
 
     if (!map || !map->cargado || map->face_count == 0) {
         return best;
@@ -331,7 +332,15 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
 
             /* 1. Esfera inferior */
             if (sweep_sphere_tri(sph_bot_start, sph_bot_end, radius, v0, v1, v2, &t, &n)) {
-                if (t < best.t) {
+                bool better = false;
+                if (sweep_down) {
+                    /* Downward sweep: prefer highest hit.pos.y (first surface hit going down) */
+                    Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), t));
+                    if (!best.hit || hit_pos.y > best.pos.y + 1e-4f) better = true;
+                } else {
+                    if (t < best.t) better = true;
+                }
+                if (better) {
                     best.hit = true;
                     best.t = t;
                     best.normal = n;
@@ -342,7 +351,14 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
             /* 2. Cilindro central (solo si half_height >= epsilon) */
             if (half_height >= CAPSULE_MIN_HEIGHT * 0.5f) {
                 if (sweep_cylinder_tri(cyl_start, cyl_end, radius, half_height, v0, v1, v2, &t, &n)) {
-                    if (t < best.t) {
+                    bool better = false;
+                    if (sweep_down) {
+                        Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), t));
+                        if (!best.hit || hit_pos.y > best.pos.y + 1e-4f) better = true;
+                    } else {
+                        if (t < best.t) better = true;
+                    }
+                    if (better) {
                         best.hit = true;
                         best.t = t;
                         best.normal = n;
@@ -353,7 +369,14 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
 
             /* 3. Esfera superior */
             if (sweep_sphere_tri(sph_top_start, sph_top_end, radius, v0, v1, v2, &t, &n)) {
-                if (t < best.t) {
+                bool better = false;
+                if (sweep_down) {
+                    Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), t));
+                    if (!best.hit || hit_pos.y > best.pos.y + 1e-4f) better = true;
+                } else {
+                    if (t < best.t) better = true;
+                }
+                if (better) {
                     best.hit = true;
                     best.t = t;
                     best.normal = n;
