@@ -33,6 +33,7 @@ if(WIN32)
     target_link_options(openstrike PRIVATE -mwindows)
     target_include_directories(openstrike PRIVATE
         deps/windows/SDL2/x86_64-w64-mingw32/include
+        deps/windows/SDL2/x86_64-w64-mingw32/include/SDL2
         deps/windows/SDL2_mixer/x86_64-w64-mingw32/include
     )
     target_link_directories(openstrike PRIVATE
