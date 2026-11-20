@@ -226,6 +226,16 @@ static bool sweep_cylinder_tri(Vec3 cyl_start, Vec3 cyl_end, f32 radius, f32 hal
 
 /* ── Swept Capsule completa ──────────────────────────────────────────────── */
 
+/* Check if triangle is degenerate (zero area) */
+static inline bool triangle_is_degenerate(Vec3 v0, Vec3 v1, Vec3 v2)
+{
+    Vec3 e1 = vec3_sub(v1, v0);
+    Vec3 e2 = vec3_sub(v2, v0);
+    Vec3 cross = vec3_cross(e1, e2);
+    f32 area2 = vec3_dot(cross, cross);
+    return area2 < 1e-12f;  // squared area < epsilon
+}
+
 SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                                   Vec3 start, Vec3 end,
                                   f32 radius, f32 half_height)
@@ -284,6 +294,9 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
             Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
             Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
             Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+
+            /* Skip degenerate triangles to avoid NaN normals */
+            if (triangle_is_degenerate(v0, v1, v2)) continue;
 
             f32 t;
             Vec3 n;
@@ -429,16 +442,18 @@ bool collision_intentar_step_up(const Map *map, const Broadphase *bp, Vec3 *pos,
     if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
     f32 half_height = capsule_h * 0.5f;
 
-    /* Barrido: adelante + arriba simultáneamente */
-    Vec3 start = *pos;
-    Vec3 horiz_move = { move_dir->x * STEP_UP_AHEAD_DIST, 0.0f, move_dir->z * STEP_UP_AHEAD_DIST };
+    /* Barrido: empezar ligeramente ATRÁS del jugador para que la cápsula
+     * no solape ya el escalón/rampa en el inicio. Luego adelante + arriba. */
+    const f32 BACK_OFFSET = 8.0f;  // mitad del radio aprox
+    Vec3 start = { pos->x - move_dir->x * BACK_OFFSET, pos->y, pos->z - move_dir->z * BACK_OFFSET };
+    Vec3 horiz_move = { move_dir->x * (STEP_UP_AHEAD_DIST + BACK_OFFSET), 0.0f, move_dir->z * (STEP_UP_AHEAD_DIST + BACK_OFFSET) };
     Vec3 end = { start.x + horiz_move.x, start.y + SV_STEPSIZE, start.z + horiz_move.z };
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         f32 ground_y = hit.pos.y;  // pos.y de la cápsula en impacto
-        f32 delta_y = ground_y - start.y;
+        f32 delta_y = ground_y - pos->y;  // delta desde posición original del jugador
 
         if (delta_y > 0.5f && delta_y <= SV_STEPSIZE) {
             pos->y = ground_y;
