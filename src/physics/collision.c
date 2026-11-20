@@ -375,23 +375,25 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
     if (!map || !map->cargado || map->face_count == 0) return result;
 
     /* Usar la cápsula del jugador para detectar suelo (robusto en rampas/triangle soup).
-     * Barrido vertical hacia abajo con la misma geometría que el bloqueo de paredes. */
+     * Barrido vertical hacia abajo. Empezar desde ARRIBA de la posición actual
+     * (pos.y + capsule_height) para detectar rampas que estén por encima del
+     * fondo actual de la cápsula (ej. inicio de rampa en y=0 con cápsula en y=-18). */
     f32 radius = RADIO_JUGADOR;
     f32 capsule_h = crouch_height - 2.0f * radius;
     if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
     f32 half_height = capsule_h * 0.5f;
+    f32 capsule_total_h = 2.0f * half_height + 2.0f * radius;  // ≈ crouch_height
 
-    /* Barrido hacia abajo: desde posición actual hasta un poco más abajo del step-up */
-    f32 down_dist = crouch_height * 0.5f + SV_STEPSIZE + 2.0f;
-    Vec3 start = pos;
-    Vec3 end = { pos.x, pos.y - down_dist, pos.z };
+    /* Barrido hacia abajo: desde pos.y + capsule_total_h hasta un poco más abajo del step-up */
+    f32 down_dist = capsule_total_h + SV_STEPSIZE + 2.0f;
+    Vec3 start = { pos.x, pos.y + capsule_total_h, pos.z };
+    Vec3 end = { pos.x, pos.y - SV_STEPSIZE - 2.0f, pos.z };
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         result.hit = true;
-        /* hit.pos es el centro de la cápsula (pies) en el impacto.
-         * El suelo está exactamente en hit.pos.y. */
+        /* hit.pos es el centro de la cápsula (pies) en el impacto. */
         result.y = hit.pos.y;
         result.normal = hit.normal;
     }
