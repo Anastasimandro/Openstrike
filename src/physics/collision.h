@@ -87,11 +87,14 @@ typedef struct {
  * half_height: semi-altura del cilindro central (crouch_height/2 - radius).
  *   Para pie: 72/2 - 16 = 20. Para agachado: max(36/2 - 16, 2) = 2.
  * broadphase: puntero al broadphase construido (puede ser NULL → fallback O(N)).
+ * ignore_floor_ceiling: si true, ignora triángulos con normal.y > 0.7 o < -0.7
+ *   (útil para bloqueo de paredes: evita choques falsos con suelo/techo).
  * Retorna el primer hit (menor t). Si no hay hit, hit=false.
  * Sin malloc, usa broadphase para limitar triángulos testeados. */
 SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                                   Vec3 start, Vec3 end,
-                                  f32 radius, f32 half_height);
+                                  f32 radius, f32 half_height,
+                                  bool ignore_floor_ceiling);
 
 /* ── API legacy (mantenida para compatibilidad, redirige a swept) ─────────── */
 

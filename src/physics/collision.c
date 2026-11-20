@@ -245,9 +245,16 @@ static inline bool triangle_is_degenerate(Vec3 v0, Vec3 v1, Vec3 v2)
     return area2 < 1e-12f;  // squared area < epsilon
 }
 
+/* Filtrar triángulos de suelo/techo durante barrido horizontal de paredes. */
+static inline bool is_floor_or_ceiling(Vec3 n)
+{
+    return n.y > 0.7f || n.y < -0.7f;
+}
+
 SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                                   Vec3 start, Vec3 end,
-                                  f32 radius, f32 half_height)
+                                  f32 radius, f32 half_height,
+                                  bool ignore_floor_ceiling)
 {
     SweepHit best = {0};
     best.t = 1.0f + SWEEP_EPSILON;  // no hit
@@ -311,8 +318,16 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
             /* Skip degenerate triangles to avoid NaN normals */
             if (triangle_is_degenerate(v0, v1, v2)) continue;
 
+            /* Compute triangle normal for floor/ceiling filtering */
+            Vec3 e1 = vec3_sub(v1, v0);
+            Vec3 e2 = vec3_sub(v2, v0);
+            Vec3 n = vec3_norm(vec3_cross(e1, e2));
+
+            if (ignore_floor_ceiling && is_floor_or_ceiling(n)) {
+                continue;  // Skip floor/ceiling triangles for wall collision
+            }
+
             f32 t;
-            Vec3 n;
 
             /* 1. Esfera inferior */
             if (sweep_sphere_tri(sph_bot_start, sph_bot_end, radius, v0, v1, v2, &t, &n)) {
@@ -371,7 +386,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
     Vec3 start = pos;
     Vec3 end = { pos.x, pos.y - down_dist, pos.z };
 
-    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
+    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         result.hit = true;
@@ -403,20 +418,14 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
     bool any_correction = false;
 
     for (int pass = 0; pass < MAX_SLIDE_PASSES; pass++) {
-        SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
+        SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, true);
 
         if (!hit.hit) {
             *out_pos = end;
             break;
         }
 
-        /* Ignorar choques con suelo (normal.y > 0.7) y techo (normal.y < -0.7).
-         * Solo procesar paredes verticales (|normal.y| <= 0.7). */
-        if (hit.normal.y > 0.7f || hit.normal.y < -0.7f) {
-            /* No es pared: dejar que la integración normal + detección de suelo lo maneje. */
-            *out_pos = end;
-            break;
-        }
+        /* Floor/ceiling already filtered in sweep. Process vertical walls only. */
 
         /* Impacto en t: mover hasta el contacto + pequeño epsilon */
         f32 move_t = hit.t - SWEEP_EPSILON;
@@ -471,7 +480,7 @@ bool collision_intentar_step_up(const Map *map, const Broadphase *bp, Vec3 *pos,
     Vec3 horiz_move = { move_dir->x * (STEP_UP_AHEAD_DIST + BACK_OFFSET), 0.0f, move_dir->z * (STEP_UP_AHEAD_DIST + BACK_OFFSET) };
     Vec3 end = { start.x + horiz_move.x, start.y + SV_STEPSIZE, start.z + horiz_move.z };
 
-    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
+    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         f32 ground_y = hit.pos.y;  // pos.y de la cápsula en impacto
@@ -496,7 +505,7 @@ bool collision_check_ceiling(const Map *map, const Broadphase *bp, Vec3 pos, f32
     Vec3 start = { pos.x, pos.y + crouch_height, pos.z };
     Vec3 end = { start.x, start.y + max_dist, start.z };
 
-    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
+    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
     return hit.hit && hit.normal.y < TECHO_NORMAL_Y_MAX;
 }
