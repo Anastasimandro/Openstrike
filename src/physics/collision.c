@@ -443,28 +443,66 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (!map || !map->cargado || map->face_count == 0) return result;
 
-    /* Usar la cápsula del jugador para detectar suelo (robusto en rampas/triangle soup).
-     * Barrido vertical hacia abajo. Empezar desde ARRIBA de la posición actual
-     * (pos.y + capsule_height) para detectar rampas que estén por encima del
-     * fondo actual de la cápsula (ej. inicio de rampa en y=0 con cápsula en y=-18). */
+    /* GoldSrc-style: raycast hacia abajo desde los pies del jugador.
+     * Usar broadphase para filtrar triángulos candidatos, luego ray-triangle exacto. */
     f32 radius = RADIO_JUGADOR;
-    f32 capsule_h = crouch_height - 2.0f * radius;
-    if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
-    f32 half_height = capsule_h * 0.5f;
-    f32 capsule_total_h = 2.0f * half_height + 2.0f * radius;  // ≈ crouch_height
+    f32 trace_dist = SV_STEPSIZE + 2.0f;  // distancia de detección (step height + margen)
+    Vec3 start = pos;
+    Vec3 end = { pos.x, pos.y - trace_dist, pos.z };
+    Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
-    /* Barrido hacia abajo: desde pos.y + capsule_total_h hasta un poco más abajo del step-up */
-    f32 down_dist = capsule_total_h + SV_STEPSIZE + 2.0f;
-    Vec3 start = { pos.x, pos.y + capsule_total_h, pos.z };
-    Vec3 end = { pos.x, pos.y - SV_STEPSIZE - 2.0f, pos.z };
+    /* Broadphase: query AABB que cubre el segmento de raycast */
+    u32 face_count = 0;
+    u16 *face_indices = NULL;
+    if (bp && bp->built) {
+        Vec3 mins = { pos.x - radius, pos.y - trace_dist - radius, pos.z - radius };
+        Vec3 maxs = { pos.x + radius, pos.y + radius, pos.z + radius };
+        face_count = broadphase_query_aabb(bp, mins, maxs, g_bp_temp, BP_TEMP_MAX);
+        face_indices = g_bp_temp;
+    } else {
+        face_count = map->face_count;
+        face_indices = NULL;
+    }
 
-    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
+    f32 best_t = 1.0f + 1e-4f;
+    Vec3 best_normal = { 0.0f, 1.0f, 0.0f };
+    bool hit_any = false;
 
-    if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
+    for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
+        u32 fi = face_indices ? face_indices[fi_idx] : fi_idx;
+        if (fi >= (u32)map->face_count) continue;
+
+        const MapFace *face = &map->faces[fi];
+        u32 base = face->vertex_start;
+        u32 count = face->vertex_count;
+
+        for (u32 ti = 0; ti + 2 < count; ti += 3) {
+            const MapVertex *va = &map->vertices[base + ti + 0];
+            const MapVertex *vb = &map->vertices[base + ti + 1];
+            const MapVertex *vc = &map->vertices[base + ti + 2];
+
+            Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
+            Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
+            Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+
+            if (triangle_is_degenerate(v0, v1, v2)) continue;
+
+            f32 t;
+            Vec3 n;
+            if (collision_ray_triangulo(start, dir, v0, v1, v2, &t, &n)) {
+                if (t >= 0.0f && t <= 1.0f && t < best_t && n.y > SUELO_NORMAL_Y_MIN) {
+                    best_t = t;
+                    best_normal = n;
+                    hit_any = true;
+                }
+            }
+        }
+    }
+
+    if (hit_any) {
         result.hit = true;
-        /* hit.pos es el centro de la cápsula (pies) en el impacto. */
-        result.y = hit.pos.y;
-        result.normal = hit.normal;
+        result.y = pos.y - best_t * trace_dist;  // punto de impacto en Y
+        result.normal = best_normal;
     }
 
     return result;
