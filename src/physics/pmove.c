@@ -238,25 +238,41 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     }
 
     /* ── MANEJO DE RAMPAS: proyectar velocidad ANTES de integrar ────────── *
-     * Si estamos en suelo y el suelo es una rampa (normal.y < 0.95),      *
-     * proyectamos la velocidad al plano de la rampa para que la           *
-     * integración siga la pendiente sin penetración ni salto.             *
-     * También aplicamos gravedad tangencial si NO hay wish_dir (quieto).  */
-    if (en_suelo_antes && normal_suelo_antes.y < 0.95f && normal_suelo_antes.y > 0.001f) {
+     * Usamos normal del suelo actual (fh de tick anterior) Y hacemos un  *
+     * chequeo predictivo en la posición siguiente para detectar rampas   *
+     * inminentes (transición flat→rampa).                               */
+    Vec3 ramp_normal = normal_suelo_antes;
+    bool on_ramp = en_suelo_antes && ramp_normal.y < 0.95f && ramp_normal.y > 0.001f;
+
+    /* Predictive: si vamos a movernos en XZ, chequear suelo en pos futura */
+    if (en_suelo_antes && tiene_wish) {
+        f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+        if (vel_xz > 0.1f) {
+            Vec3 next_pos = { p->pos.x + p->vel.x * dt, p->pos.y, p->pos.z + p->vel.z * dt };
+            FloorHit fh_next = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
+            if (fh_next.hit && fh_next.normal.y < 0.95f && fh_next.normal.y > 0.001f) {
+                /* Próximo tick estaremos en rampa: usar esa normal YA */
+                ramp_normal = fh_next.normal;
+                on_ramp = true;
+            }
+        }
+    }
+
+    if (on_ramp) {
         /* Proyectar velocidad al plano de la rampa */
-        Vec3 vel_tangent = vec3_project_on_plane(p->vel, normal_suelo_antes);
+        Vec3 vel_tangent = vec3_project_on_plane(p->vel, ramp_normal);
         p->vel = vel_tangent;
 
         /* Si no hay input de movimiento, aplicar gravedad tangencial *
          * para que el jugador se deslice cuesta abajo naturalmente.  */
         if (!tiene_wish) {
-            Vec3 gt = gravity_tangent(normal_suelo_antes);
+            Vec3 gt = gravity_tangent(ramp_normal);
             p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
         }
 
         /* Proyectar wish_dir al plano de la rampa para aceleración posterior */
         if (tiene_wish) {
-            wish_dir = vec3_project_on_plane(wish_dir, normal_suelo_antes);
+            wish_dir = vec3_project_on_plane(wish_dir, ramp_normal);
             wish_dir.y = 0.0f;
             f32 len = sqrtf(wish_dir.x * wish_dir.x + wish_dir.z * wish_dir.z);
             if (len > 0.001f) {
