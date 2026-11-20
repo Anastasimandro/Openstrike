@@ -160,7 +160,7 @@ bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt, f32 
              * el ángulo de la velocidad. */
             Vec3 dir_ray = { -n.x, -n.y, -n.z };
             f32  t;
-            if (!ray_triangulo(orig, dir_ray, v0, v1, v2, &t, NULL)) {
+            if (!collision_ray_triangulo(orig, dir_ray, v0, v1, v2, &t, NULL)) {
                 continue;
             }
 
