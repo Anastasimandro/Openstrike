@@ -69,6 +69,8 @@ bool collision_ray_triangulo(Vec3 orig, Vec3 dir,
  * Para cada primitiva, testear colisión contra triángulo.
  * Retorna el hit con menor t.                                           */
 
+#define BARY_TOLERANCE 1e-3f
+
 static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
                               Vec3 v0, Vec3 v1, Vec3 v2,
                               f32 *t_out, Vec3 *normal_out)
@@ -99,7 +101,7 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
         Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(contact, v0));
         Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(contact, v1));
         Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(contact, v2));
-        if (vec3_dot(n, c0) >= -1e-4f && vec3_dot(n, c1) >= -1e-4f && vec3_dot(n, c2) >= -1e-4f) {
+        if (vec3_dot(n, c0) >= -BARY_TOLERANCE && vec3_dot(n, c1) >= -BARY_TOLERANCE && vec3_dot(n, c2) >= -BARY_TOLERANCE) {
             *t_out = 0.0f;
             if (normal_out) *normal_out = n;
             return true;
@@ -132,7 +134,7 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(contact, v0));
     Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(contact, v1));
     Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(contact, v2));
-    if (vec3_dot(n, c0) < -1e-4f || vec3_dot(n, c1) < -1e-4f || vec3_dot(n, c2) < -1e-4f) {
+    if (vec3_dot(n, c0) < -BARY_TOLERANCE || vec3_dot(n, c1) < -BARY_TOLERANCE || vec3_dot(n, c2) < -BARY_TOLERANCE) {
         return false;  // fuera del triángulo
     }
 
