@@ -323,8 +323,8 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
                 }
             }
 
-            /* 2. Cilindro central (solo si half_height > epsilon) */
-            if (half_height > CAPSULE_MIN_HEIGHT * 0.5f) {
+            /* 2. Cilindro central (solo si half_height >= epsilon) */
+            if (half_height >= CAPSULE_MIN_HEIGHT * 0.5f) {
                 if (sweep_cylinder_tri(cyl_start, cyl_end, radius, half_height, v0, v1, v2, &t, &n)) {
                     if (t < best.t) {
                         best.hit = true;
