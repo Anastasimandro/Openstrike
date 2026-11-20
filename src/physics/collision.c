@@ -84,7 +84,7 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     Vec3 n = vec3_norm(vec3_cross(e1, e2));
     f32 plane_d = vec3_dot(n, v0);
 
-    /* Distancia de la esfera al plano en start y end */
+    /* Distancia firmada de la esfera al plano en start y end */
     f32 dist_start = vec3_dot(n, sphere_start) - plane_d;
     f32 dist_end   = vec3_dot(n, sphere_end) - plane_d;
 
@@ -92,15 +92,10 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     if (dist_start > radius && dist_end > radius) return false;
     if (dist_start < -radius && dist_end < -radius) return false;
 
-    /* t donde la esfera toca el plano (dist = radius) */
-    f32 denom = dist_end - dist_start;
-
-    /* Caso 1: La esfera YA toca/penetra el plano en start (dist_start <= radius).
-     * Esto ocurre cuando el jugador está en el suelo/rampa. Devolver hit en t=0. */
-    if (dist_start <= radius + 1e-4f) {
-        /* Verificar que el punto de contacto (start proyectado al plano - radio*normal)
-         * está dentro del triángulo */
-        Vec3 contact = vec3_sub(sphere_start, vec3_scale(n, radius));
+    /* Caso 1: La esfera YA toca/penetra el plano en start (|dist_start| <= radius).
+     * El punto de contacto en el plano es sphere_start - n * dist_start. */
+    if (fabsf(dist_start) <= radius + 1e-4f) {
+        Vec3 contact = vec3_sub(sphere_start, vec3_scale(n, dist_start));
         Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(contact, v0));
         Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(contact, v1));
         Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(contact, v2));
@@ -112,14 +107,26 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
         /* Si no está dentro del triángulo, seguir con test de cruce normal */
     }
 
+    /* t donde la esfera toca el plano (|dist| = radius) */
+    f32 denom = dist_end - dist_start;
     if (fabsf(denom) < 1e-6f) return false;  // paralela al plano
 
-    f32 t_plane = (radius - dist_start) / denom;
-    if (t_plane < 0.0f || t_plane > 1.0f) return false;
+    f32 t1 = (radius - dist_start) / denom;
+    f32 t2 = (-radius - dist_start) / denom;
 
-    /* Punto de contacto en el plano */
-    Vec3 contact = vec3_add(sphere_start, vec3_scale(dir, t_plane * len));
-    contact = vec3_sub(contact, vec3_scale(n, radius));
+    f32 t_plane = 1.0f + 1e-4f;
+    if (t1 >= 0.0f && t1 <= 1.0f) t_plane = t1;
+    if (t2 >= 0.0f && t2 <= 1.0f && t2 < t_plane) t_plane = t2;
+
+    if (t_plane > 1.0f) return false;
+
+    /* Punto de contacto en el plano: sphere en t_plane, luego proyectar al plano y desplazar por radio */
+    Vec3 sphere_at_t = vec3_add(sphere_start, vec3_scale(dir, t_plane * len));
+    f32 dist_at_t = dist_start + (dist_end - dist_start) * t_plane;
+    Vec3 contact = vec3_sub(sphere_at_t, vec3_scale(n, dist_at_t));
+    /* Desplazar desde el plano hacia la esfera por radio */
+    if (dist_at_t > 0) contact = vec3_add(contact, vec3_scale(n, radius));
+    else contact = vec3_sub(contact, vec3_scale(n, radius));
 
     /* Test baricéntrico: ¿contact está dentro del triángulo? */
     Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(contact, v0));
