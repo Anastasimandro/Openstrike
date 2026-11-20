@@ -353,7 +353,7 @@ int main(void)
         f32 vel_xz_max = 0.0f;
         for (int i = 0; i < 100; i++) {
             phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
-            f32 vxz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+            f32 vxz = sqrtf(p.vel.x * p.vel.x + p.vel.z * p.vel.z);
             if (vxz > vel_xz_max) vel_xz_max = vxz;
         }
         printf("\n--- Test: bajar rampa caminando (-x) ---\n");
