@@ -18,6 +18,9 @@
 #include <math.h>
 #include <string.h>
 
+/* ── Broadphase global (construido una vez en main.c) ─────────────────────── */
+extern Broadphase g_broadphase;
+
 /* ── Funciones internas ───────────────────────────────────────────────────── */
 
 /* Aplica fricción sobre el plano XZ cuando el jugador está en suelo. */
@@ -64,9 +67,39 @@ static void cap_velocidad_bhop(PhysPlayer *p)
     }
 }
 
+/* Proyecta un vector 3D sobre un plano definido por su normal.
+ * Retorna la componente tangencial (vector - normal * dot(vector, normal)). */
+static inline Vec3 vec3_project_on_plane(Vec3 v, Vec3 n)
+{
+    return vec3_sub(v, vec3_scale(n, vec3_dot(v, n)));
+}
+
+/* Calcula la componente tangencial de la gravedad en una pendiente.
+ * gravity_vec = (0, -SV_GRAVITY, 0)
+ * tangent_gravity = gravity_vec - normal * dot(gravity_vec, normal)
+ * Magnitud = SV_GRAVITY * sin(theta) donde theta = ángulo pendiente. */
+static inline Vec3 gravity_tangent(Vec3 normal)
+{
+    /* gravity_vec = (0, -SV_GRAVITY, 0) */
+    /* dot(gravity, normal) = -SV_GRAVITY * normal.y */
+    /* tangent = (0, -SV_GRAVITY, 0) - normal * (-SV_GRAVITY * normal.y)
+     *        = (0, -SV_GRAVITY, 0) + normal * (SV_GRAVITY * normal.y)
+     *        = SV_GRAVITY * (normal * normal.y - (0, 1, 0)) */
+    f32 gy = -SV_GRAVITY * normal.y;
+    Vec3 t = {
+        normal.x * gy,
+        normal.y * gy + SV_GRAVITY,  // -SV_GRAVITY + normal.y * (-SV_GRAVITY * normal.y) = -SV_GRAVITY*(1 - normal.y^2) = -SV_GRAVITY*sin^2
+        normal.z * gy
+    };
+    /* Corrección: tangente real = g * (n * n.y - up) */
+    t.x = SV_GRAVITY * normal.x * normal.y;
+    t.y = SV_GRAVITY * (normal.y * normal.y - 1.0f);
+    t.z = SV_GRAVITY * normal.z * normal.y;
+    return t;
+}
+
 /* ── Agachado (5c): transición suave ─────────────────────────────────────── */
 
-/* Inicializa estado de agachado al crear el jugador. */
 static void phys_crouch_init(PhysPlayer *p)
 {
     p->crouch_height    = CROUCH_HEIGHT_STAND;
@@ -74,63 +107,23 @@ static void phys_crouch_init(PhysPlayer *p)
     p->crouch_transition = 0;
 }
 
-/* Comprueba si hay techo a la altura de pie (72 u) sobre los pies.
- * Lanza rayo hacia arriba desde (pos.x, pos.y + crouch_height, pos.z).
- * Retorna true si hay obstáculo a menos de (CROUCH_HEIGHT_STAND - crouch_height + 4) u.
- * Usa ray_triangulo generalizada filtrando normal.y < -0.7 (cara hacia abajo). */
-static bool phys_check_ceiling(const Map *map, const PhysPlayer *p)
+static bool phys_check_ceiling(const Map *map, const Broadphase *bp, const PhysPlayer *p)
 {
     if (!map || !map->cargado || map->face_count == 0) { return false; }
 
-    /* Origen del rayo: arriba de la caja actual */
-    Vec3 orig = { p->pos.x, p->pos.y + p->crouch_height, p->pos.z };
-    Vec3 dir  = { 0.0f, 1.0f, 0.0f };
-
-    /* Distancia máxima a comprobar: diferencia hasta altura de pie + margen */
-    f32 max_dist = (CROUCH_HEIGHT_STAND - p->crouch_height) + 4.0f;
-
-    for (i32 fi = 0; fi < map->face_count; fi++) {
-        const MapFace *face  = &map->faces[fi];
-        u32            base  = face->vertex_start;
-        u32            count = face->vertex_count;
-
-        for (u32 ti = 0; ti + 2 < count; ti += 3) {
-            const MapVertex *va = &map->vertices[base + ti + 0];
-            const MapVertex *vb = &map->vertices[base + ti + 1];
-            const MapVertex *vc = &map->vertices[base + ti + 2];
-
-            Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
-            Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
-            Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
-
-            f32 t;
-            Vec3 normal;
-            if (collision_ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
-                /* Solo techos: normal apunta hacia abajo (y < -0.7) */
-                if (normal.y < -0.7f && t < max_dist) {
-                    return true;  /* Techo bloquea */
-                }
-            }
-        }
-    }
-    return false;
+    f32 max_dist = (CROUCH_HEIGHT_STAND - p->crouch_height) + CEILING_CHECK_DIST;
+    return collision_check_ceiling(map, bp, p->pos, p->crouch_height, max_dist);
 }
 
-/* Actualiza transición de agachado: interpola crouch_height hacia crouch_target.
- * Si se quiere levantar (target = 72) y hay techo, mantiene agachado (target = 36). */
-static void phys_crouch_update(PhysPlayer *p, const PhysInput *input, const Map *map)
+static void phys_crouch_update(PhysPlayer *p, const PhysInput *input, const Map *map, const Broadphase *bp)
 {
     bool quiere_agachado = input->agacharse;
 
-    /* Determinar objetivo según input */
     f32 nuevo_target = quiere_agachado ? CROUCH_HEIGHT_DUCK : CROUCH_HEIGHT_STAND;
 
-    /* Si el objetivo cambia, iniciar transición */
     if (nuevo_target != p->crouch_target) {
-        /* Si quiere levantarse, comprobar techo ANTES de permitir la transición */
         if (nuevo_target == CROUCH_HEIGHT_STAND) {
-            if (phys_check_ceiling(map, p)) {
-                /* Techo bajo: forzar a seguir agachado */
+            if (phys_check_ceiling(map, bp, p)) {
                 nuevo_target = CROUCH_HEIGHT_DUCK;
                 quiere_agachado = true;
             }
@@ -142,7 +135,6 @@ static void phys_crouch_update(PhysPlayer *p, const PhysInput *input, const Map 
         }
     }
 
-    /* Interpolar altura actual hacia objetivo */
     if (p->crouch_transition > 0) {
         f32 t = 1.0f - (f32)p->crouch_transition / (f32)CROUCH_TRANSITION_TICKS;
         p->crouch_height = p->crouch_height + (p->crouch_target - p->crouch_height) * t;
@@ -151,11 +143,9 @@ static void phys_crouch_update(PhysPlayer *p, const PhysInput *input, const Map 
             p->crouch_height = p->crouch_target;
         }
     } else {
-        /* Sin transición activa: asegurar que height == target */
         p->crouch_height = p->crouch_target;
     }
 
-    /* Actualizar flag agachado para compatibilidad (velocidad, etc.) */
     p->agachado = quiere_agachado;
 }
 
@@ -170,15 +160,24 @@ void phys_player_init(PhysPlayer *p, Vec3 spawn_pos)
 
 void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
 {
+    /* Broadphase global construido en main.c */
+    const Broadphase *bp = &g_broadphase;
+
     /* Guardar estado de suelo ANTES de procesar el tick para el step-up:
      * el step-up solo funciona si el jugador YA estaba en suelo al
      * empezar el tick (no si aterriza en este mismo tick). */
     bool en_suelo_antes = p->en_suelo;
+    Vec3 normal_suelo_antes = { 0.0f, 1.0f, 0.0f };
+    if (en_suelo_antes) {
+        /* Obtener normal del suelo anterior para gravedad tangencial */
+        FloorHit fh_prev = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
+        if (fh_prev.hit) normal_suelo_antes = fh_prev.normal;
+    }
 
     p->caminando = input.caminar;
 
     /* ── Actualizar agachado con transición suave y comprobación de techo ── */
-    phys_crouch_update(p, &input, map);
+    phys_crouch_update(p, &input, map, bp);
 
     /* ── Coyote time: incrementar contador al dejar el suelo ───────────── */
     if (en_suelo_antes && !p->en_suelo) {
@@ -200,132 +199,154 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         p->vel.y = JUMP_CUT_VEL;
     }
 
+    bool puede_saltar = p->en_suelo || p->coyote_ticks > 0;
     bool debe_saltar  = input.saltar || p->jump_buffer_ticks > 0;
 
+    /* ── Determinar wish_dir y wish_speed ANTES de integrar ─────────────── *
+     * Necesario para proyectar velocidad en rampa ANTES de integrar.       */
+    Vec3 wish_dir = input.wish_dir;
+    f32 wish_speed = 0.0f;
+    bool tiene_wish = vec3_len(wish_dir) > 0.001f;
+
     if (p->en_suelo) {
-        /* ── En suelo: fricción + movimiento ──────────────────────────── *
-         * Ventana de gracia bhop: los primeros BHOP_GRACE_TICKS tras      *
-         * aterrizar NO aplican fricción. Saltar dentro de esa ventana     *
-         * (~94 ms) conserva la velocidad; llegar tarde ya la perdió       *
-         * (castigo por timing impreciso). Andar normal no se beneficia:   *
-         * la aceleración en suelo iguala a SPEED_RUN de todos modos.      */
         if (p->ticks_en_suelo > BHOP_GRACE_TICKS) {
             aplicar_friccion(p, dt);
         }
 
-        if (debe_saltar) {
+        if (debe_saltar && puede_saltar) {
             /* Impulso de salto */
             p->vel.y             = JUMP_IMPULSE;
             p->en_suelo          = false;
-            p->jump_buffer_ticks = 0;  /* consumir buffer */
+            p->jump_buffer_ticks = 0;
 
-            /* Air strafing inmediato en el frame del salto — clampeado a
-             * AIR_WISH_SPEED (30): sin skill no gana velocidad */
-            if (vec3_len(input.wish_dir) > 0.001f) {
-                acelerar(p, input.wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
+            if (tiene_wish) {
+                acelerar(p, wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
             }
-
             cap_velocidad_bhop(p);
         } else {
-            /* Aceleración en suelo según estado */
-            f32 wish_speed = p->agachado  ? SPEED_DUCK :
-                             p->caminando ? SPEED_WALK :
-                                            SPEED_RUN;
-            if (vec3_len(input.wish_dir) > 0.001f) {
-                acelerar(p, input.wish_dir, wish_speed, SV_ACCELERATE, dt);
+            wish_speed = p->agachado  ? SPEED_DUCK :
+                         p->caminando ? SPEED_WALK :
+                                        SPEED_RUN;
+            if (tiene_wish) {
+                acelerar(p, wish_dir, wish_speed, SV_ACCELERATE, dt);
             }
         }
-
     } else {
-        /* ── En aire: gravedad + air strafing ─────────────────────────── */
+        /* En aire: gravedad + air strafing */
         p->vel.y -= SV_GRAVITY * dt;
         if (p->vel.y < -SV_MAXVELOCITY) { p->vel.y = -SV_MAXVELOCITY; }
 
-        if (vec3_len(input.wish_dir) > 0.001f) {
-            acelerar(p, input.wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
+        if (tiene_wish) {
+            acelerar(p, wish_dir, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
         }
-
-        /* Cap XZ continuo en aire (ver cap_velocidad_bhop) */
         cap_velocidad_bhop(p);
     }
 
-    /* ── Integrar posición ────────────────────────────────────────────── */
+    /* ── MANEJO DE RAMPAS: proyectar velocidad ANTES de integrar ────────── *
+     * Si estamos en suelo y el suelo es una rampa (normal.y < 0.95),      *
+     * proyectamos la velocidad al plano de la rampa para que la           *
+     * integración siga la pendiente sin penetración ni salto.             *
+     * También aplicamos gravedad tangencial si NO hay wish_dir (quieto).  */
+    if (en_suelo_antes && normal_suelo_antes.y < 0.95f && normal_suelo_antes.y > 0.001f) {
+        /* Proyectar velocidad al plano de la rampa */
+        Vec3 vel_tangent = vec3_project_on_plane(p->vel, normal_suelo_antes);
+        p->vel = vel_tangent;
+
+        /* Si no hay input de movimiento, aplicar gravedad tangencial *
+         * para que el jugador se deslice cuesta abajo naturalmente.  */
+        if (!tiene_wish) {
+            Vec3 gt = gravity_tangent(normal_suelo_antes);
+            p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
+        }
+
+        /* Proyectar wish_dir al plano de la rampa para aceleración posterior */
+        if (tiene_wish) {
+            wish_dir = vec3_project_on_plane(wish_dir, normal_suelo_antes);
+            wish_dir.y = 0.0f;
+            f32 len = sqrtf(wish_dir.x * wish_dir.x + wish_dir.z * wish_dir.z);
+            if (len > 0.001f) {
+                wish_dir.x /= len;
+                wish_dir.z /= len;
+            } else {
+                tiene_wish = false;
+            }
+        }
+    }
+
+    /* ── Integrar posición ──────────────────────────────────────────────── */
+    Vec3 pos_antes = p->pos;
     p->pos = vec3_add(p->pos, vec3_scale(p->vel, dt));
 
-    /* ── Bloquear paredes: slide en caras verticales (5a-2) ───────────── *
-     * Debe correr ANTES de detectar suelo: recorta pos si este tick cruzó  *
-     * una pared y proyecta vel para resbalar a lo largo de ella.           *
-     * Pasa altura actual de la caja para colisión correcta agachado/de pie. */
-    collision_bloquear_pared(map, &p->pos, &p->vel, dt, p->crouch_height);
+    /* ── Bloquear paredes con swept capsule (slide) ─────────────────────── */
+    collision_bloquear_pared(map, bp, &p->pos, &p->vel, dt, p->crouch_height);
 
-    /* ── Step-up (5a-3): subir escalones de hasta 18 u sin saltar ───────── *
-     * Solo si estaba en suelo ANTES del tick y hay movimiento en XZ.
-     * Lanza rayo desde (pos + wish_dir*20 + (0,18,0)) hacia abajo.
-     * Si hay suelo entre pos.y+0.5 y pos.y+18 → pos.y = suelo_y, vel.y = 0.
-     * Pasa altura actual para origen correcto del rayo. */
-    collision_intentar_step_up(map, &p->pos, &input.wish_dir, en_suelo_antes, p->crouch_height);
+    /* ── Step-up robusto: usa dirección de VELOCIDAD (no wish_dir) ──────── *
+     * Solo si estaba en suelo ANTES y hay movimiento horizontal real.      */
+    if (en_suelo_antes) {
+        f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+        if (vel_xz > 0.01f) {
+            Vec3 move_dir = { p->vel.x / vel_xz, 0.0f, p->vel.z / vel_xz };
+            collision_intentar_step_up(map, bp, &p->pos, &move_dir, en_suelo_antes, p->crouch_height);
+        }
+    }
 
-    /* ── Detectar suelo real contra geometría del mapa ───────────────── *
-     * Reemplaza el suelo temporal "if (pos.y <= 0)".                    *
-     * Condiciones para aterrizar:                                        *
-     *   - Hay geometría de suelo en rango                                *
-     *   - Los pies están dentro de 0.5 u por encima del suelo            *
-     *   - La velocidad vertical es 0 o negativa (no estamos subiendo)    *
-     * Pasa altura actual para origen y distancia correctos.              */
-    FloorHit fh = collision_detectar_suelo(map, p->pos, p->crouch_height);
+    /* ── Detectar suelo real contra geometría del mapa ──────────────────── */
+    FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
     if (fh.hit && p->pos.y <= fh.y + 0.5f && p->vel.y <= 0.0f) {
         p->pos.y    = fh.y;
         p->vel.y    = 0.0f;
         p->en_suelo = true;
 
-        /* ── Suelo pendiente (5b): caminar por rampas como suelo ── *
-         * El suelo soporta al jugador: no hay gravedad tangente    *
-         * que frene al subir ni acelere al bajar. Se proyecta      *
-         * wish_dir sobre el plano de la rampa para que el          *
-         * movimiento siga la pendiente. Si está quieto, la         *
-         * fricción lo mantiene quieto sin deslizarse.              */
+        /* ── Suelo pendiente: manejar fricción/quieto en rampa ─────────── */
         if (fh.normal.y < 0.95f) {
             f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
 
-            /* Proyectar wish_dir en el plano de la rampa (quitar componente normal) */
-            Vec3 wish_ramp = vec3_sub(input.wish_dir,
-                vec3_scale(fh.normal, vec3_dot(input.wish_dir, fh.normal)));
-            wish_ramp.y = 0.0f;
-            f32 wish_len = sqrtf(wish_ramp.x * wish_ramp.x + wish_ramp.z * wish_ramp.z);
-            if (wish_len > 0.001f) {
-                wish_ramp.x /= wish_len;
-                wish_ramp.z /= wish_len;
+            /* Re-proyectar wish_dir al plano de la rampa actual (puede haber cambiado) */
+            Vec3 wish_ramp = wish_dir;
+            if (tiene_wish) {
+                wish_ramp = vec3_project_on_plane(wish_dir, fh.normal);
+                wish_ramp.y = 0.0f;
+                f32 len = sqrtf(wish_ramp.x * wish_ramp.x + wish_ramp.z * wish_ramp.z);
+                if (len > 0.001f) {
+                    wish_ramp.x /= len;
+                    wish_ramp.z /= len;
+                } else {
+                    tiene_wish = false;
+                }
             }
 
-            if (wish_len > 0.001f) {
+            if (tiene_wish) {
                 /* Moverse en la rampa: acelerar como en suelo plano */
-                f32 wish_speed = p->agachado ? SPEED_DUCK :
-                                 p->caminando ? SPEED_WALK : SPEED_RUN;
-                acelerar(p, wish_ramp, wish_speed, SV_ACCELERATE, dt);
+                f32 ws = p->agachado ? SPEED_DUCK :
+                         p->caminando ? SPEED_WALK : SPEED_RUN;
+                acelerar(p, wish_ramp, ws, SV_ACCELERATE, dt);
             } else if (vel_xz > 0.1f) {
-                /* Inercia sobre la rampa: el suelo nos sostiene, no frena */
+                /* Inercia sobre la rampa: el suelo nos sostiene, no frena *
+                 * PERO aplicamos gravedad tangencial para deslizar natural */
+                Vec3 gt = gravity_tangent(fh.normal);
+                p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
             } else {
-                /* Quieto en rampa: fricción para no deslizarse solo */
+                /* Quieto en rampa: fricción para no deslizarse solo *
+                 * (la gravedad tangencial ya se aplicó arriba si !tiene_wish) */
                 aplicar_friccion(p, dt);
             }
 
-            /* Proyectar velocidad al plano de la rampa para que la integración
-             * siga la pendiente sin "saltar" ni penetrar el suelo.
-             * Plano: dot(vel, normal) = 0  =>  vel.y = -(vel.x*n.x + vel.z*n.z)/n.y */
+            /* Asegurar que velocidad no tiene componente normal al suelo */
             if (fh.normal.y > 0.001f) {
-                p->vel.y = -(p->vel.x * fh.normal.x + p->vel.z * fh.normal.z) / fh.normal.y;
+                f32 vn = vec3_dot(p->vel, fh.normal);
+                if (vn < 0.0f) {
+                    p->vel = vec3_sub(p->vel, vec3_scale(fh.normal, vn));
+                }
             }
 
-            p->pos.y  = fh.y;
+            p->pos.y = fh.y;
 
-            /* ── Salto automático al aterrizar (jump buffer en rampa) ── *
-             * Si se pulió SPACE justo antes de tocar suelo (buffer con   *
-             * ticks restantes), salta en este mismo tick.                */
+            /* ── Salto automático al aterrizar (jump buffer en rampa) ── */
             if (p->jump_buffer_ticks > 0) {
                 p->vel.y             = JUMP_IMPULSE;
                 p->en_suelo          = false;
                 p->jump_buffer_ticks = 0;
-                if (wish_len > 0.001f) {
+                if (tiene_wish) {
                     acelerar(p, wish_ramp, AIR_WISH_SPEED, SV_AIRACCELERATE, dt);
                 }
                 cap_velocidad_bhop(p);
@@ -335,7 +356,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         p->en_suelo = false;
     }
 
-    /* ── Contador de suelo para la ventana de gracia del bhop ─────────── */
+    /* ── Contador de suelo para la ventana de gracia del bhop ───────────── */
     if (p->en_suelo) {
         if (p->ticks_en_suelo < 255) { p->ticks_en_suelo++; }
     } else {
@@ -345,8 +366,6 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
 
 f32 phys_view_height(const PhysPlayer *p)
 {
-    /* Interpolar altura de vista entre 28 (agachado) y 64 (de pie)
-     * según la altura actual de la caja (36..72). */
     f32 ratio = (p->crouch_height - CROUCH_HEIGHT_DUCK) / (CROUCH_HEIGHT_STAND - CROUCH_HEIGHT_DUCK);
     if (ratio < 0.0f) ratio = 0.0f;
     if (ratio > 1.0f) ratio = 1.0f;

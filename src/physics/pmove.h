@@ -18,7 +18,8 @@
 
 #include "types.h"
 #include "renderer/math.h"
-#include "collision.h"    /* FloorHit, collision_detectar_suelo; trae map.h transitivamente */
+#include "collision.h"
+#include "broadphase.h"
 
 /* ── Constantes de movimiento — exactas CS:GO ─────────────────────────────── */
 #define SV_GRAVITY        800.0f

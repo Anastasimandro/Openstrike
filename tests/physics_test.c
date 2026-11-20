@@ -22,9 +22,11 @@
 #include <stdio.h>
 #include "types.h"
 #include "physics/pmove.h"
+#include "physics/broadphase.h"
 
 /* Map ≈ 2.3 MB — SIEMPRE global (BSS), nunca en el stack */
 static Map g_map_test;
+static Broadphase g_broadphase_test;
 
 static int g_fallos = 0;
 
@@ -156,6 +158,14 @@ int main(void)
         return 1;
     }
 
+    /* Construir broadphase para tests */
+    broadphase_build(&g_broadphase_test, &g_map_test);
+    broadphase_debug_stats(&g_broadphase_test);
+
+    /* Asignar broadphase global usado por pmove.c */
+    extern Broadphase g_broadphase;
+    g_broadphase = g_broadphase_test;
+
     printf("=== Tests de colision paredes (11 casos previos) ===\n");
 
     /* 320 ticks = 5 s; a 250 u/s recorre 1250 u -- cruza la sala de sobra */
@@ -239,6 +249,119 @@ int main(void)
             printf("  OK (subio rampa agachado)\n");
         } else {
             printf("  INFO: no subio rampa (esperado si no hay step-up en ruta)\n");
+        }
+    }
+
+    /* Test: gravedad tangencial en rampa (quieto se desliza cuesta abajo) */
+    {
+        PhysPlayer p;
+        /* Rampa en sala_prueba: x=[180,220], z=[-40,40], y=0->18.
+         * En x=200, z=0, altura de rampa = 9u. Poner jugador en y=9 (sobre la rampa). */
+        phys_player_init(&p, (Vec3){ 200.0f, 9.0f, 0.0f });
+        p.en_suelo = true;
+
+        PhysInput in = {0};
+        in.wish_dir = (Vec3){ 0.0f, 0.0f, 0.0f };  /* SIN input */
+        in.saltar = false;
+        in.saltar_held = false;
+        in.agacharse = false;
+        in.caminar = false;
+
+        f32 y_inicial = p.pos.y;
+        for (int i = 0; i < 300; i++) {  /* ~5 segundos */
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        }
+        printf("\n--- Test: gravedad tangencial en rampa (quieto) ---\n");
+        printf("  pos inicial y=%.2f -> final y=%.2f (delta=%.2f)\n",
+               y_inicial, p.pos.y, p.pos.y - y_inicial);
+        if (p.pos.y < y_inicial - 5.0f) {  /* debe haber bajado al menos 5 unidades */
+            printf("  OK (se deslizo cuesta abajo por gravedad tangencial)\n");
+        } else {
+            printf("  FALLO: no se deslizo cuesta abajo (gravedad tangencial rota)\n");
+            g_fallos++;
+        }
+    }
+
+    /* Test: step-up usa dirección de velocidad (no wish_dir) */
+    {
+        PhysPlayer p;
+        phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+        p.en_suelo = true;
+
+        PhysInput in = {0};
+        in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
+        in.saltar = false;
+        in.saltar_held = false;
+        in.agacharse = false;
+        in.caminar = false;
+
+        /* Mover hacia la rampa y subir */
+        for (int i = 0; i < 100; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        }
+        printf("\n--- Test: step-up en rampa (vel dir) ---\n");
+        printf("  pos=(%.2f, %.2f, %.2f)\n", p.pos.x, p.pos.y, p.pos.z);
+        if (p.pos.y > 10.0f) {  /* subió la rampa completa (18u) */
+            printf("  OK (step-up funciono en rampa)\n");
+        } else {
+            printf("  INFO: pos y=%.2f (rampa sube a 18u)\n", p.pos.y);
+        }
+    }
+
+    /* Test: subir rampa caminando (debe ser suave, sin saltos) */
+    {
+        PhysPlayer p;
+        phys_player_init(&p, (Vec3){ 170.0f, 0.0f, 0.0f });  /* antes de la rampa */
+        p.en_suelo = true;
+
+        PhysInput in = {0};
+        in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
+        in.saltar = false;
+        in.saltar_held = false;
+        in.agacharse = false;
+        in.caminar = false;
+
+        f32 y_inicial = p.pos.y;
+        for (int i = 0; i < 100; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        }
+        printf("\n--- Test: subir rampa caminando (+x) ---\n");
+        printf("  pos inicial y=%.2f -> final y=%.2f (delta=%.2f)\n",
+               y_inicial, p.pos.y, p.pos.y - y_inicial);
+        if (p.pos.y > y_inicial + 15.0f && p.pos.y < 20.0f) {
+            printf("  OK (subio rampa suavemente a y=%.2f)\n", p.pos.y);
+        } else {
+            printf("  FALLO: subida de rampa anómala (y=%.2f)\n", p.pos.y);
+            g_fallos++;
+        }
+    }
+
+    /* Test: bajar rampa caminando (gravedad tangencial acelera) */
+    {
+        PhysPlayer p;
+        phys_player_init(&p, (Vec3){ 220.0f, 18.0f, 0.0f });  /* tope de la rampa */
+        p.en_suelo = true;
+
+        PhysInput in = {0};
+        in.wish_dir = (Vec3){ -1.0f, 0.0f, 0.0f };  /* hacia -x (bajando) */
+        in.saltar = false;
+        in.saltar_held = false;
+        in.agacharse = false;
+        in.caminar = false;
+
+        f32 x_inicial = p.pos.x;
+        f32 vel_xz_max = 0.0f;
+        for (int i = 0; i < 100; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            f32 vxz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+            if (vxz > vel_xz_max) vel_xz_max = vxz;
+        }
+        printf("\n--- Test: bajar rampa caminando (-x) ---\n");
+        printf("  recorrido x=%.2f, vel_max=%.2f\n", x_inicial - p.pos.x, vel_xz_max);
+        if (vel_xz_max > SPEED_RUN * 1.2f) {  /* debe acelerar por gravedad */
+            printf("  OK (aceleró cuesta abajo por gravedad tangencial, vel_max=%.2f)\n", vel_xz_max);
+        } else {
+            printf("  INFO: vel_max=%.2f (esperado > %.2f si gravedad tangencial funciona)\n", vel_xz_max, SPEED_RUN * 1.2f);
         }
     }
 
