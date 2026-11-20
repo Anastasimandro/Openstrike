@@ -25,7 +25,6 @@
 #include "renderer/textures.h"
 #include "map/map.h"   /* Para MapFace */
 
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 /* ── Estado estático del gestor de texturas ─────────────────────────── */
@@ -227,7 +226,9 @@ void texturas_usar(int idx)
     if (idx < 0 || idx >= g_material_count) {
         idx = TEXTURA_FALLBACK_IDX;
     }
-    glActiveTexture(GL_TEXTURE0);
+    if (gl_ActiveTexture) {
+        gl_ActiveTexture(GL_TEXTURE0);
+    }
     glBindTexture(GL_TEXTURE_2D, g_materiales[idx].gl_id);
 }
 
