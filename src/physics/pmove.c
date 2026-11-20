@@ -18,9 +18,6 @@
 #include <math.h>
 #include <string.h>
 
-/* ── Broadphase global (construido una vez en main.c) ─────────────────────── */
-extern Broadphase g_broadphase;
-
 /* ── Funciones internas ───────────────────────────────────────────────────── */
 
 /* Aplica fricción sobre el plano XZ cuando el jugador está en suelo. */
@@ -158,10 +155,8 @@ void phys_player_init(PhysPlayer *p, Vec3 spawn_pos)
     phys_crouch_init(p);
 }
 
-void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
+void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Broadphase *bp)
 {
-    /* Broadphase global construido en main.c */
-    const Broadphase *bp = &g_broadphase;
 
     /* Guardar estado de suelo ANTES de procesar el tick para el step-up:
      * el step-up solo funciona si el jugador YA estaba en suelo al

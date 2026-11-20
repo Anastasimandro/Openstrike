@@ -89,8 +89,9 @@ typedef struct {
 void phys_player_init(PhysPlayer *p, Vec3 spawn_pos);
 
 /* Tick completo de física. Llamar exactamente a 64 Hz (dt = 1/64 = 0.015625).
- * map se usa para detectar el suelo real — pasar &g_map siempre.             */
-void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt);
+ * map se usa para detectar el suelo real — pasar &g_map siempre.
+ * bp: broadphase construido (puede ser NULL → fallback O(N)). */
+void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Broadphase *bp);
 
 /* Retorna altura de vista interpolada según estado de agachado. */
 f32  phys_view_height(const PhysPlayer *p);

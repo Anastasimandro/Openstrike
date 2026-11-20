@@ -222,7 +222,7 @@ static void update(f32 dt)
     phys_input.caminar     = g_input.caminar;
 
     /* Tick de física con detección de suelo real */
-    phys_tick(&g_player, phys_input, &g_map, dt);
+    phys_tick(&g_player, phys_input, &g_map, dt, &g_broadphase);
 
     /* Consumo del salto — evita doble salto si el accumulator hace 2 ticks */
     g_input.saltar = false;

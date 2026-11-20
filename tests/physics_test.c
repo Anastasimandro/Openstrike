@@ -46,7 +46,7 @@ static void simular(const char *nombre, Vec3 wish, int ticks)
     in.caminar   = false;
 
     for (int i = 0; i < ticks; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
 
         if (p.pos.x < -255.0f || p.pos.x > 255.0f ||
             p.pos.z < -255.0f || p.pos.z > 255.0f) {
@@ -79,7 +79,7 @@ static void simular_agachado(const char *nombre)
     in.caminar = false;
 
     for (int i = 0; i < 10; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
     }
     printf("  Inicial (pie): crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
            p.crouch_height, phys_view_height(&p), p.agachado);
@@ -91,7 +91,7 @@ static void simular_agachado(const char *nombre)
     /* 2. Agacharse */
     in.agacharse = true;
     for (int i = 0; i < 20; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
     }
     printf("  Agachado: crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
            p.crouch_height, phys_view_height(&p), p.agachado);
@@ -107,7 +107,7 @@ static void simular_agachado(const char *nombre)
     /* 3. Levantarse */
     in.agacharse = false;
     for (int i = 0; i < 20; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
     }
     printf("  Levantado: crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
            p.crouch_height, phys_view_height(&p), p.agachado);
@@ -122,13 +122,13 @@ static void simular_agachado(const char *nombre)
 
     /* 4. Agachado rápido (toggle rápido) */
     in.agacharse = true;
-    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
     in.agacharse = false;
-    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
     in.agacharse = true;
-    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
     in.agacharse = false;
-    for (int i = 0; i < 20; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+    for (int i = 0; i < 20; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
     printf("  Toggle rapido: crouch_height=%.2f, view_height=%.2f\n",
            p.crouch_height, phys_view_height(&p));
     if (p.crouch_height < 70.0f || p.crouch_height > 72.0f) {
@@ -213,7 +213,7 @@ int main(void)
         in.caminar = false;
 
         for (int i = 0; i < 320; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
         }
         printf("\n--- Test: movimiento agachado contra pared este ---\n");
         printf("  pos=(%.2f, %.2f, %.2f), crouch_height=%.2f\n",
@@ -240,7 +240,7 @@ int main(void)
         in.caminar = false;
 
         for (int i = 0; i < 200; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
         }
         printf("\n--- Test: step-up en rampa agachado ---\n");
         printf("  pos=(%.2f, %.2f, %.2f), crouch_height=%.2f\n",
@@ -269,7 +269,7 @@ int main(void)
 
         f32 y_inicial = p.pos.y;
         for (int i = 0; i < 300; i++) {  /* ~5 segundos */
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
         }
         printf("\n--- Test: gravedad tangencial en rampa (quieto) ---\n");
         printf("  pos inicial y=%.2f -> final y=%.2f (delta=%.2f)\n",
@@ -297,7 +297,7 @@ int main(void)
 
         /* Mover hacia la rampa y subir */
         for (int i = 0; i < 100; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
         }
         printf("\n--- Test: step-up en rampa (vel dir) ---\n");
         printf("  pos=(%.2f, %.2f, %.2f)\n", p.pos.x, p.pos.y, p.pos.z);
@@ -323,7 +323,7 @@ int main(void)
 
         f32 y_inicial = p.pos.y;
         for (int i = 0; i < 100; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
         }
         printf("\n--- Test: subir rampa caminando (+x) ---\n");
         printf("  pos inicial y=%.2f -> final y=%.2f (delta=%.2f)\n",
@@ -352,7 +352,7 @@ int main(void)
         f32 x_inicial = p.pos.x;
         f32 vel_xz_max = 0.0f;
         for (int i = 0; i < 100; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase_test);
             f32 vxz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
             if (vxz > vel_xz_max) vel_xz_max = vxz;
         }
