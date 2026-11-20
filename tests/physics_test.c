@@ -367,4 +367,4 @@ int main(void)
     }
     printf("\nRESULTADO: OK\n");
     return 0;
-}
+}"// CI trigger"  
