@@ -324,9 +324,11 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (!map || !map->cargado || map->face_count == 0) return result;
 
-    /* Usar la cápsula real del jugador para detectar suelo correctamente en rampas.
-     * Radio = RADIO_JUGADOR, half_height = (crouch_height - 2*radius)/2. */
-    f32 radius = RADIO_JUGADOR;
+    /* Usar un radio REDUCIDO para detección de suelo (evita que la cápsula
+     * "pille" el suelo plano adyacente al estar en el borde de una rampa).
+     * La mitad del radio del jugador es suficiente para detectar la superficie
+     * sin solapar geometría vecina. */
+    f32 radius = RADIO_JUGADOR * 0.5f;
     f32 capsule_h = crouch_height - 2.0f * radius;
     if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
     f32 half_height = capsule_h * 0.5f;
