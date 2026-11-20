@@ -20,7 +20,7 @@ jobs:
           cmake --build build
       - name: Test físico (corre la física contra sala_prueba)
         run: |
-          gcc -Wall -Wextra -O2 -Isrc tests/physics_test.c src/physics/pmove.c src/physics/collision.c src/map/map_load.c src/map/map_zones.c src/map/waypoints.c -lm -o build/physics_test
+          gcc -Wall -Wextra -O2 -Isrc tests/physics_test.c src/physics/pmove.c src/physics/collision.c src/physics/broadphase.c src/map/map_load.c src/map/map_zones.c src/map/waypoints.c -lm -o build/physics_test
           ./build/physics_test
       - name: Copiar assets
         run: cp -r assets build/assets
