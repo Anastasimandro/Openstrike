@@ -324,26 +324,24 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (!map || !map->cargado || map->face_count == 0) return result;
 
-    /* Usar un radio REDUCIDO para detección de suelo (evita que la cápsula
-     * "pille" el suelo plano adyacente al estar en el borde de una rampa).
-     * La mitad del radio del jugador es suficiente para detectar la superficie
-     * sin solapar geometría vecina. */
-    f32 radius = RADIO_JUGADOR * 0.5f;
-    f32 capsule_h = crouch_height - 2.0f * radius;
-    if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
-    f32 half_height = capsule_h * 0.5f;
+    /* Usar una esfera MUY DELGADA (radio 0.1) para detectar suelo.
+     * El centro de la esfera empieza en pos + (0, radius, 0) para que la
+     * esfera toque el suelo en pos.y si hay suelo justo debajo. */
+    f32 radius = 0.1f;
+    f32 half_height = 0.0f;
 
-    /* Barrido hacia abajo: desde los pies actuales hasta un poco más abajo del step-up */
+    /* Barrido hacia abajo: desde los pies actuales + radio hasta un poco más abajo del step-up */
     f32 down_dist = crouch_height * 0.5f + SV_STEPSIZE + 2.0f;
-    Vec3 start = pos;
-    Vec3 end = { pos.x, pos.y - down_dist, pos.z };
+    Vec3 start = { pos.x, pos.y + radius, pos.z };
+    Vec3 end = { pos.x, pos.y - down_dist + radius, pos.z };
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         result.hit = true;
-        /* hit.pos es la posición de los PIES en el impacto. */
-        result.y = hit.pos.y;
+        /* hit.pos es el centro de la esfera en el impacto.
+         * El suelo está en hit.pos.y - radius. */
+        result.y = hit.pos.y - radius;
         result.normal = hit.normal;
     }
 
