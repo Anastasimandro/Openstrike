@@ -104,11 +104,12 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
 FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos, f32 crouch_height);
 
 /* Bloqueo de paredes con slide usando swept capsule.
- * Barrido desde pos hasta pos + vel*dt con cápsula del jugador.
+ * Barrido desde start_pos hasta start_pos + vel*dt con cápsula del jugador.
  * Desliza proyectando velocidad restante en el plano de contacto (iterativo, máx 2 pasadas).
  * broadphase: para O(1) en mapas grandes.
+ * Escribe la posición final en out_pos y actualiza vel (velocidad real tras slide).
  * Retorna true si se corrigió algo. */
-bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 *pos, Vec3 *vel, f32 dt, f32 crouch_height);
+bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_pos, Vec3 *vel, f32 dt, f32 crouch_height, Vec3 *out_pos);
 
 /* Step-up robusto: barrido de cápsula hacia adelante y arriba.
  * Intenta mover la cápsula en dirección 'move_dir' (XZ normalizada) por STEP_UP_AHEAD_DIST,

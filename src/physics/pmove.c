@@ -268,11 +268,14 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         }
     }
 
-    /* ── Integrar posición ──────────────────────────────────────────────── */
-    p->pos = vec3_add(p->pos, vec3_scale(p->vel, dt));
+    /* ── Colisión de paredes con swept capsule ANTES de integrar ────────── *
+     * Barrido desde posición actual hasta actual + vel*dt.                 *
+     * Esto evita tunneling y permite slide correcto.                       */
+    Vec3 pos_after_walls;
+    collision_bloquear_pared(map, bp, p->pos, &p->vel, dt, p->crouch_height, &pos_after_walls);
 
-    /* ── Bloquear paredes con swept capsule (slide) ─────────────────────── */
-    collision_bloquear_pared(map, bp, &p->pos, &p->vel, dt, p->crouch_height);
+    /* ── Integrar posición ──────────────────────────────────────────────── */
+    p->pos = pos_after_walls;
 
     /* ── Step-up robusto: usa dirección de VELOCIDAD (no wish_dir) ──────── *
      * Solo si estaba en suelo ANTES y hay movimiento horizontal real.      */

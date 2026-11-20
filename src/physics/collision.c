@@ -94,7 +94,25 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
 
     /* t donde la esfera toca el plano (dist = radius) */
     f32 denom = dist_end - dist_start;
-    if (fabsf(denom) < 1e-6f) return false;  // paralela al plano, ya manejado arriba
+
+    /* Caso 1: La esfera YA toca/penetra el plano en start (dist_start <= radius).
+     * Esto ocurre cuando el jugador está en el suelo/rampa. Devolver hit en t=0. */
+    if (dist_start <= radius + 1e-4f) {
+        /* Verificar que el punto de contacto (start proyectado al plano - radio*normal)
+         * está dentro del triángulo */
+        Vec3 contact = vec3_sub(sphere_start, vec3_scale(n, radius));
+        Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(contact, v0));
+        Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(contact, v1));
+        Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(contact, v2));
+        if (vec3_dot(n, c0) >= -1e-4f && vec3_dot(n, c1) >= -1e-4f && vec3_dot(n, c2) >= -1e-4f) {
+            *t_out = 0.0f;
+            if (normal_out) *normal_out = n;
+            return true;
+        }
+        /* Si no está dentro del triángulo, seguir con test de cruce normal */
+    }
+
+    if (fabsf(denom) < 1e-6f) return false;  // paralela al plano
 
     f32 t_plane = (radius - dist_start) / denom;
     if (t_plane < 0.0f || t_plane > 1.0f) return false;
@@ -124,14 +142,7 @@ static bool sweep_cylinder_tri(Vec3 cyl_start, Vec3 cyl_end, f32 radius, f32 hal
 
     /* El cilindro es un segmento (eje) + radio.
      * Aproximación: testear intersección segmento-triángulo con radio expandido.
-     * Método: mover v0,v1,v2 hacia afuera por 'radius' a lo largo de sus normales de vértice
-     * es costoso. En su lugar, usar test de distancia segmento-triángulo < radius.
-     *
-     * Implementación simplificada: testear colisión de la línea central (segmento)
-     * con el triángulo expandido por radio (Minkowski sum ≈ triángulo + esfera).
-     * Equivale a: distancia del segmento al triángulo < radius.
-     *
-     * Usamos el algoritmo de "segment-triangle distance" de Christer Ericson. */
+     * Usamos test de distancia segmento-triángulo < radius (slab + proyección). */
 
     Vec3 seg_dir = vec3_sub(cyl_end, cyl_start);
     f32 seg_len = vec3_len(seg_dir);
@@ -151,6 +162,23 @@ static bool sweep_cylinder_tri(Vec3 cyl_start, Vec3 cyl_end, f32 radius, f32 hal
     /* Si el segmento cruza el plano (o está cerca dentro de radio) */
     if (d0 > radius && d1 > radius) return false;
     if (d0 < -radius && d1 < -radius) return false;
+
+    /* Caso 1: El segmento YA está dentro del slab en start (|d0| <= radius).
+     * Devolver hit en t=0 si la proyección está en el triángulo. */
+    if (fabsf(d0) <= radius + 1e-4f) {
+        Vec3 proj = vec3_sub(cyl_start, vec3_scale(n, d0));
+        Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(proj, v0));
+        Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(proj, v1));
+        Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(proj, v2));
+        f32 dot0 = vec3_dot(n, c0);
+        f32 dot1 = vec3_dot(n, c1);
+        f32 dot2 = vec3_dot(n, c2);
+        if (dot0 >= -radius && dot1 >= -radius && dot2 >= -radius) {
+            *t_out = 0.0f;
+            if (normal_out) *normal_out = n;
+            return true;
+        }
+    }
 
     /* Clampear a [-radius, radius] para encontrar t de cruce del "slab" */
     f32 t_enter = 0.0f, t_exit = 1.0f;
@@ -306,25 +334,31 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
         result.hit = true;
-        result.y = hit.pos.y;  // pos.y en el impacto = altura del suelo + radio ≈ altura del suelo
+        /* hit.pos es el centro de la cápsula en el impacto.
+         * Para barrido de esfera (half_height=0): hit.pos = sphere_center.
+         * El suelo está en sphere_center.y - radius. */
+        result.y = hit.pos.y - radius;
         result.normal = hit.normal;
     }
 
     return result;
 }
 
-bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 *pos, Vec3 *vel, f32 dt, f32 crouch_height)
+bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_pos, Vec3 *vel, f32 dt, f32 crouch_height, Vec3 *out_pos)
 {
-    if (!map || !map->cargado || map->face_count == 0) return false;
+    if (!map || !map->cargado || map->face_count == 0) {
+        *out_pos = vec3_add(start_pos, vec3_scale(*vel, dt));
+        return false;
+    }
 
     f32 radius = RADIO_JUGADOR;
     f32 capsule_h = crouch_height - 2.0f * radius;
     if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
     f32 half_height = capsule_h * 0.5f;
 
-    Vec3 original_pos = *pos;
-    Vec3 start = *pos;
-    Vec3 end = vec3_add(*pos, vec3_scale(*vel, dt));
+    Vec3 original_pos = start_pos;
+    Vec3 start = start_pos;
+    Vec3 end = vec3_add(start_pos, vec3_scale(*vel, dt));
 
     bool any_correction = false;
 
@@ -332,7 +366,7 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 *pos, V
         SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height);
 
         if (!hit.hit) {
-            *pos = end;
+            *out_pos = end;
             break;
         }
 
@@ -348,18 +382,22 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 *pos, V
             remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
         }
 
-        *pos = new_pos;
         start = new_pos;
         end = vec3_add(start, remaining_vel);
         any_correction = true;
 
         /* Si la velocidad restante es casi nula, terminar */
-        if (vec3_len(remaining_vel) < 0.01f) break;
+        if (vec3_len(remaining_vel) < 0.01f) {
+            *out_pos = new_pos;
+            break;
+        }
     }
 
     if (any_correction) {
         /* Velocidad final = desplazamiento real total / dt */
-        *vel = vec3_scale(vec3_sub(*pos, original_pos), 1.0f / dt);
+        *vel = vec3_scale(vec3_sub(*out_pos, original_pos), 1.0f / dt);
+    } else {
+        *out_pos = end;
     }
 
     return any_correction;
