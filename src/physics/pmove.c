@@ -244,15 +244,18 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     Vec3 ramp_normal = normal_suelo_antes;
     bool on_ramp = en_suelo_antes && ramp_normal.y < 0.95f && ramp_normal.y > 0.001f;
 
+    /* Predictive floor hit (para override en transición flat→rampa) */
+    FloorHit fh_predictive = {0};
+
     /* Predictive: si vamos a movernos en XZ, chequear suelo en pos futura.
      * Usar wish_speed (no vel actual) para mirar más lejos durante aceleración. */
     if (en_suelo_antes && tiene_wish) {
         f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
         Vec3 next_pos = { p->pos.x + wish_dir.x * lookahead, p->pos.y, p->pos.z + wish_dir.z * lookahead };
-        FloorHit fh_next = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
-        if (fh_next.hit && fh_next.normal.y < 0.95f && fh_next.normal.y > 0.001f) {
+        fh_predictive = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
+        if (fh_predictive.hit && fh_predictive.normal.y < 0.95f && fh_predictive.normal.y > 0.001f) {
             /* Próximo tick estaremos en rampa: usar esa normal YA */
-            ramp_normal = fh_next.normal;
+            ramp_normal = fh_predictive.normal;
             on_ramp = true;
         }
     }
@@ -304,6 +307,14 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     /* ── Detectar suelo real contra geometría del mapa ──────────────────── */
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
+
+    /* Override: si el check predictivo detectó rampa pero el floor detection
+     * devuelve suelo plano (transición flat→rampa), confiar en el predictivo. */
+    if (on_ramp && fh.hit && fh.normal.y > 0.99f && ramp_normal.y < 0.99f && fh_predictive.hit) {
+        fh.normal = ramp_normal;
+        fh.y = fh_predictive.y;  // usar la altura real de la rampa en la posición predictiva
+    }
+
     if (fh.hit && p->pos.y <= fh.y + 0.5f && p->vel.y <= 0.0f) {
         p->pos.y    = fh.y;
         p->vel.y    = 0.0f;
