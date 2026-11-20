@@ -33,6 +33,19 @@
 #define PARED_NORMAL_Y_MAX 0.3f
 
 /* ────────────────────────────────────────────────────────────────────────── *
+ * Möller–Trumbore: intersección rayo–triángulo (pública para raycast de balas,
+ * comprobación de techo, etc.).                                            *
+ * ────────────────────────────────────────────────────────────────────────── */
+/* Acepta triángulos de CUALQUIER orientación. El filtrado por orientación
+ * lo hace cada llamada según su caso (suelo: normal.y > 0; pared: |normal.y| < 0.3;
+ * techo: normal.y < -0.7).
+ * Escribe la distancia t en *t_out y la normal normalizada en *normal_out
+ * (si no es NULL). t > 0 siempre al retornar true. */
+bool collision_ray_triangulo(Vec3 orig, Vec3 dir,
+                              Vec3 v0, Vec3 v1, Vec3 v2,
+                              f32 *t_out, Vec3 *normal_out);
+
+/* ────────────────────────────────────────────────────────────────────────── *
  * Resultado de una consulta de suelo.                                        *
  * ────────────────────────────────────────────────────────────────────────── */
 typedef struct {

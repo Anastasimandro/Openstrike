@@ -105,7 +105,7 @@ static bool phys_check_ceiling(const Map *map, const PhysPlayer *p)
 
             f32 t;
             Vec3 normal;
-            if (ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
+            if (collision_ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
                 /* Solo techos: normal apunta hacia abajo (y < -0.7) */
                 if (normal.y < -0.7f && t < max_dist) {
                     return true;  /* Techo bloquea */
@@ -200,7 +200,6 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
         p->vel.y = JUMP_CUT_VEL;
     }
 
-    bool puede_saltar = p->en_suelo || p->coyote_ticks > 0;
     bool debe_saltar  = input.saltar || p->jump_buffer_ticks > 0;
 
     if (p->en_suelo) {

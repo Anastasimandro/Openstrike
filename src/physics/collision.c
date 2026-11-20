@@ -24,15 +24,15 @@
  * (se calcula dinámicamente en cada función) */
 #define STEP_UP_AHEAD_DIST  20.0f
 
-/* ── Möller–Trumbore: intersección rayo–triángulo ────────────────────────── *
+/* ── Möller–Trumbore: intersección rayo–triángulo (pública) ──────────────── *
  * Generalizada (5a-2): acepta triángulos de CUALQUIER orientación — suelo,
  * pared o techo. El filtrado por orientación lo hace cada llamada según su
  * caso (suelo: normal.y > 0; pared: |normal.y| < 0.3; techo: normal.y < -0.7).
  * Escribe la distancia t en *t_out y la normal normalizada en *normal_out
  * (si no es NULL). t > 0 siempre al retornar true.                          */
-static bool ray_triangulo(Vec3 orig, Vec3 dir,
-                           Vec3 v0, Vec3 v1, Vec3 v2,
-                           f32 *t_out, Vec3 *normal_out)
+bool collision_ray_triangulo(Vec3 orig, Vec3 dir,
+                              Vec3 v0, Vec3 v1, Vec3 v2,
+                              f32 *t_out, Vec3 *normal_out)
 {
     Vec3 e1 = vec3_sub(v1, v0);
     Vec3 e2 = vec3_sub(v2, v0);
@@ -101,7 +101,7 @@ FloorHit collision_detectar_suelo(const Map *map, Vec3 pos, f32 crouch_height)
 
             f32 t;
             Vec3 normal;
-            if (ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
+            if (collision_ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
                 /* Filtrar solo caras de suelo (la base ya no filtra) */
                 if (normal.y > 0.0f && t < best_t) {
                     best_t      = t;
@@ -248,7 +248,7 @@ bool collision_intentar_step_up(const Map *map, Vec3 *pos, const Vec3 *wish_dir,
 
             f32 t;
             Vec3 normal;
-            if (ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
+            if (collision_ray_triangulo(orig, dir, v0, v1, v2, &t, &normal)) {
                 if (normal.y > 0.0f && t < best_t) {
                     best_t = t;
                 }
