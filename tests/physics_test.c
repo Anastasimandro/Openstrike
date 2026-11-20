@@ -26,7 +26,7 @@
 
 /* Map ≈ 2.3 MB — SIEMPRE global (BSS), nunca en el stack */
 static Map g_map_test;
-static Broadphase g_broadphase_test;
+static Broadphase g_broadphase;       /* definición real para test (no extern) */
 
 static int g_fallos = 0;
 
@@ -159,12 +159,8 @@ int main(void)
     }
 
     /* Construir broadphase para tests */
-    broadphase_build(&g_broadphase_test, &g_map_test);
-    broadphase_debug_stats(&g_broadphase_test);
-
-    /* Asignar broadphase global usado por pmove.c */
-    extern Broadphase g_broadphase;
-    g_broadphase = g_broadphase_test;
+    broadphase_build(&g_broadphase, &g_map_test);
+    broadphase_debug_stats(&g_broadphase);
 
     printf("=== Tests de colision paredes (11 casos previos) ===\n");
 
