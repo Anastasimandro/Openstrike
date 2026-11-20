@@ -94,14 +94,22 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
     if (dist_start > radius && dist_end > radius) return false;
     if (dist_start < -radius && dist_end < -radius) return false;
 
+    /* Helper: test if point on plane is inside triangle (with BARY_TOLERANCE) */
+    static inline bool point_in_tri(Vec3 p, Vec3 v0, Vec3 v1, Vec3 v2, Vec3 n)
+    {
+        Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(p, v0));
+        Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(p, v1));
+        Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(p, v2));
+        return vec3_dot(n, c0) >= -BARY_TOLERANCE &&
+               vec3_dot(n, c1) >= -BARY_TOLERANCE &&
+               vec3_dot(n, c2) >= -BARY_TOLERANCE;
+    }
+
     /* Caso 1: La esfera YA toca/penetra el plano en start (|dist_start| <= radius).
-     * El punto de contacto en el plano es sphere_start - n * dist_start. */
+     * Punto de contacto EN EL PLANO: sphere_start - n * dist_start. */
     if (fabsf(dist_start) <= radius + 1e-4f) {
-        Vec3 contact = vec3_sub(sphere_start, vec3_scale(n, dist_start));
-        Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(contact, v0));
-        Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(contact, v1));
-        Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(contact, v2));
-        if (vec3_dot(n, c0) >= -BARY_TOLERANCE && vec3_dot(n, c1) >= -BARY_TOLERANCE && vec3_dot(n, c2) >= -BARY_TOLERANCE) {
+        Vec3 plane_contact = vec3_sub(sphere_start, vec3_scale(n, dist_start));
+        if (point_in_tri(plane_contact, v0, v1, v2, n)) {
             *t_out = 0.0f;
             if (normal_out) *normal_out = n;
             return true;
@@ -122,21 +130,18 @@ static bool sweep_sphere_tri(Vec3 sphere_start, Vec3 sphere_end, f32 radius,
 
     if (t_plane > 1.0f) return false;
 
-    /* Punto de contacto en el plano: sphere en t_plane, luego proyectar al plano y desplazar por radio */
+    /* Punto de contacto EN EL PLANO (para test baricéntrico) */
     Vec3 sphere_at_t = vec3_add(sphere_start, vec3_scale(dir, t_plane * len));
     f32 dist_at_t = dist_start + (dist_end - dist_start) * t_plane;
-    Vec3 contact = vec3_sub(sphere_at_t, vec3_scale(n, dist_at_t));
-    /* Desplazar desde el plano hacia la esfera por radio */
-    if (dist_at_t > 0) contact = vec3_add(contact, vec3_scale(n, radius));
-    else contact = vec3_sub(contact, vec3_scale(n, radius));
+    Vec3 plane_contact = vec3_sub(sphere_at_t, vec3_scale(n, dist_at_t));
 
-    /* Test baricéntrico: ¿contact está dentro del triángulo? */
-    Vec3 c0 = vec3_cross(vec3_sub(v1, v0), vec3_sub(contact, v0));
-    Vec3 c1 = vec3_cross(vec3_sub(v2, v1), vec3_sub(contact, v1));
-    Vec3 c2 = vec3_cross(vec3_sub(v0, v2), vec3_sub(contact, v2));
-    if (vec3_dot(n, c0) < -BARY_TOLERANCE || vec3_dot(n, c1) < -BARY_TOLERANCE || vec3_dot(n, c2) < -BARY_TOLERANCE) {
-        return false;  // fuera del triángulo
+    /* Test baricéntrico: ¿punto en el plano está dentro del triángulo? */
+    if (!point_in_tri(plane_contact, v0, v1, v2, n)) {
+        return false;
     }
+
+    /* SweepHit.pos = centro de la esfera en el impacto = plane_contact + n * radius (signo según lado) */
+    /* No se usa aquí; collision_sweep_capsula reconstruye pos desde start/end/t */
 
     *t_out = t_plane;
     if (normal_out) *normal_out = n;
