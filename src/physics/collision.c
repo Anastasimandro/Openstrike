@@ -437,37 +437,13 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
 
 /* ── API Legacy (redirigen a swept) ──────────────────────────────────────── */
 
-FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos, f32 crouch_height)
+/* Raycast helper for floor detection - returns true if hit, sets t and normal */
+static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_indices,
+                           u32 face_count, Vec3 start, Vec3 dir, f32 max_dist,
+                           f32 *best_t, Vec3 *best_normal)
 {
-    (void)crouch_height;
-    FloorHit result = {0};
-
-    if (!map || !map->cargado || map->face_count == 0) return result;
-
-    /* GoldSrc-style: raycast hacia abajo desde ligeramente encima de los pies.
-     * Empezar 2 unidades arriba para evitar rechazo t=0 cuando el jugador está en el suelo. */
-    f32 radius = RADIO_JUGADOR;
-    f32 trace_dist = SV_STEPSIZE + 2.0f;  // distancia de detección (step height + margen)
-    Vec3 start = { pos.x, pos.y + 2.0f, pos.z };
-    Vec3 end = { pos.x, pos.y - trace_dist, pos.z };
-    Vec3 dir = { 0.0f, -1.0f, 0.0f };
-
-    /* Broadphase: query AABB que cubre el segmento de raycast */
-    u32 face_count = 0;
-    u16 *face_indices = NULL;
-    if (bp && bp->built) {
-        Vec3 mins = { pos.x - radius, pos.y - trace_dist - radius, pos.z - radius };
-        Vec3 maxs = { pos.x + radius, pos.y + 2.0f + radius, pos.z + radius };
-        face_count = broadphase_query_aabb(bp, mins, maxs, g_bp_temp, BP_TEMP_MAX);
-        face_indices = g_bp_temp;
-    } else {
-        face_count = map->face_count;
-        face_indices = NULL;
-    }
-
-    f32 best_t = trace_dist + 2.0f + 1e-4f;  // max distance along dir (unnormalized)
-    Vec3 best_normal = { 0.0f, 1.0f, 0.0f };
     bool hit_any = false;
+    *best_t = max_dist + 1e-4f;
 
     for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
         u32 fi = face_indices ? face_indices[fi_idx] : fi_idx;
@@ -491,18 +467,72 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
             f32 t;
             Vec3 n;
             if (collision_ray_triangulo(start, dir, v0, v1, v2, &t, &n)) {
-                if (t >= 0.0f && t < best_t && n.y > SUELO_NORMAL_Y_MIN) {
-                    best_t = t;
-                    best_normal = n;
+                if (t >= 0.0f && t < *best_t && n.y > SUELO_NORMAL_Y_MIN) {
+                    *best_t = t;
+                    *best_normal = n;
                     hit_any = true;
                 }
+            }
+        }
+    }
+    return hit_any;
+}
+
+FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos, f32 crouch_height)
+{
+    (void)crouch_height;
+    FloorHit result = {0};
+
+    if (!map || !map->cargado || map->face_count == 0) return result;
+
+    /* GoldSrc-style: multiple raycasts from slightly above feet to handle edges.
+     * 5 rays: center + 4 corners of player's footprint (radius * 0.7). */
+    f32 radius = RADIO_JUGADOR;
+    f32 trace_dist = SV_STEPSIZE + 2.0f;
+    f32 offset = 2.0f;  // start 2 units above feet
+    f32 corner = radius * 0.7f;
+
+    Vec3 starts[5] = {
+        { pos.x, pos.y + offset, pos.z },                    // center
+        { pos.x + corner, pos.y + offset, pos.z + corner },  // NE
+        { pos.x - corner, pos.y + offset, pos.z + corner },  // NW
+        { pos.x + corner, pos.y + offset, pos.z - corner },  // SE
+        { pos.x - corner, pos.y + offset, pos.z - corner },  // SW
+    };
+    Vec3 dir = { 0.0f, -1.0f, 0.0f };
+
+    f32 best_t = trace_dist + offset + 1e-4f;
+    Vec3 best_normal = { 0.0f, 1.0f, 0.0f };
+    bool hit_any = false;
+
+    /* Broadphase query for the union of all 5 ray AABBs */
+    u32 face_count = 0;
+    u16 *face_indices = NULL;
+    if (bp && bp->built) {
+        Vec3 mins = { pos.x - radius, pos.y - trace_dist - radius, pos.z - radius };
+        Vec3 maxs = { pos.x + radius, pos.y + offset + radius, pos.z + radius };
+        face_count = broadphase_query_aabb(bp, mins, maxs, g_bp_temp, BP_TEMP_MAX);
+        face_indices = g_bp_temp;
+    } else {
+        face_count = map->face_count;
+        face_indices = NULL;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        f32 t;
+        Vec3 n;
+        if (raycast_floor(map, bp, face_indices, face_count, starts[i], dir, trace_dist + offset, &t, &n)) {
+            if (t < best_t) {
+                best_t = t;
+                best_normal = n;
+                hit_any = true;
             }
         }
     }
 
     if (hit_any) {
         result.hit = true;
-        result.y = start.y - best_t;  // dir = (0, -1, 0), so best_t = Y distance
+        result.y = pos.y + offset - best_t;  // foot position at impact
         result.normal = best_normal;
     }
 
