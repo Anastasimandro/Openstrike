@@ -283,8 +283,8 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Override predictivo para transición flat→rampa ────────────────── *
      * Si el check predictivo detectó rampa, calcular la altura de la rampa *
      * en la posición ACTUAL del jugador usando el plano de la rampa.       *
-     * Aplicar SIEMPRE que tengamos datos predictivos válidos (el snap      *
-     * fallará naturalmente si la rampa aún no está a nuestra altura).     */
+     * Aplicar si la rampa está a menos de SV_STEPSIZE por debajo del       *
+     * suelo plano (transición inminente) o por encima.                    */
     bool predictive_ramp_valid = false;
     f32 predictive_ramp_y = fh.y;
     Vec3 predictive_ramp_normal = fh.normal;
@@ -296,9 +296,13 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
         if (fabsf(ny) > 1e-4f) {
             f32 ramp_y_at_player = fh_predictive.y - (nx * (p->pos.x - next_pos.x) + nz * (p->pos.z - next_pos.z)) / ny;
-            predictive_ramp_valid = true;
-            predictive_ramp_y = ramp_y_at_player;
-            predictive_ramp_normal = ramp_normal;
+            /* Aplicar solo si la rampa está a la altura del suelo plano o por encima *
+             * (evita snap a altura negativa cuando aún no hemos llegado a la rampa) */
+            if (ramp_y_at_player >= fh.y) {
+                predictive_ramp_valid = true;
+                predictive_ramp_y = ramp_y_at_player;
+                predictive_ramp_normal = ramp_normal;
+            }
         }
     }
 
