@@ -191,8 +191,17 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     /* ── Determinar wish_dir y wish_speed ───────────────────────────────── */
     Vec3 wish_dir = input.wish_dir;
-    f32 wish_speed = 0.0f;
     bool tiene_wish = vec3_len(wish_dir) > 0.001f;
+
+    /* Calcular wish_speed ANTES para predictive lookahead */
+    f32 wish_speed = 0.0f;
+    if (p->en_suelo) {
+        wish_speed = p->agachado  ? SPEED_DUCK :
+                     p->caminando ? SPEED_WALK :
+                                    SPEED_RUN;
+    } else {
+        wish_speed = AIR_WISH_SPEED;
+    }
 
     /* ── Predictive: detectar rampa inminente (flat→rampa) ──────────────── *
      * Si en suelo plano pero hay wish_dir, mirar adelante ~4 ticks.        *
@@ -240,9 +249,6 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
             }
             cap_velocidad_bhop(p);
         } else {
-            wish_speed = p->agachado  ? SPEED_DUCK :
-                         p->caminando ? SPEED_WALK :
-                                        SPEED_RUN;
             if (tiene_wish) {
                 acelerar(p, wish_dir, wish_speed, SV_ACCELERATE, dt);
             }
@@ -260,10 +266,13 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     /* ── Gravedad tangencial en rampa (solo si en suelo y no saltando) ──── *
      * Aplicar ANTES de colisión de paredes para que la velocidad ya        *
-     * incluya la componente tangencial.                                    */
-    if (p->en_suelo && on_ramp_curr) {
+     * incluya la componente tangencial.                                    *
+     * Usar normal de rampa actual O predictiva (para transición flat→rampa). */
+    bool on_ramp_for_gravity = on_ramp_curr || on_ramp_predictive;
+    Vec3 ramp_normal_for_gravity = on_ramp_curr ? floor_normal_curr : ramp_normal_predictive;
+    if (p->en_suelo && on_ramp_for_gravity) {
         /* Solo si NO se camina HACIA ARRIBA */
-        Vec3 gt = gravity_tangent(floor_normal_curr);
+        Vec3 gt = gravity_tangent(ramp_normal_for_gravity);
         bool walking_up = false;
         if (tiene_wish) {
             Vec3 down_slope = { gt.x, 0.0f, gt.z };
