@@ -201,19 +201,17 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     }
 
     /* ── Predictive: detectar rampa inminente (flat→rampa) ──────────────── *
-     * Usar wish_dir_input (horizontal) para lookahead.                     */
+     * Usar wish_dir_input (horizontal) para lookahead.
+     * USA swept capsule (más fiable que raycast para detectar rampas).     */
     bool on_ramp_predictive = false;
     Vec3 ramp_normal_predictive = floor_normal_curr;
-    FloorHit fh_ramp_at_next = {0};
     Vec3 next_pos = p->pos;
 
     if (p->en_suelo && !on_ramp_curr && tiene_wish) {
         f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
         next_pos = (Vec3){ p->pos.x + wish_dir_input.x * lookahead, p->pos.y, p->pos.z + wish_dir_input.z * lookahead };
-        fh_ramp_at_next = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
-        if (fh_ramp_at_next.hit && fh_ramp_at_next.normal.y < 0.95f && fh_ramp_at_next.normal.y > 0.001f) {
+        if (collision_detectar_rampa_predictiva(map, bp, p->pos, wish_dir_input, lookahead, p->crouch_height, &ramp_normal_predictive)) {
             on_ramp_predictive = true;
-            ramp_normal_predictive = fh_ramp_at_next.normal;
         }
     }
 
@@ -312,19 +310,18 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
     /* ── Predictive override para snap ──────────────────────────────────── *
-     * Si detectamos rampa adelante, usar su altura/normal en lugar del      *
-     * raycast (que puede pegar al suelo plano DEBAJO de la rampa).         *
-     * Aplicar cuando la rampa esté POR ENCIMA del suelo detectado en la     *
-     * posición actual del jugador.                                         */
+     * Si detectamos rampa adelante, calcular su altura en la posición       *
+     * actual del jugador y usarla si está por encima del suelo detectado.   */
     f32 floor_y = fh.y;
     Vec3 floor_normal = fh.normal;
     bool floor_hit = fh.hit;
 
-    if (on_ramp_predictive && fh.hit && fh_ramp_at_next.hit) {
+    if (on_ramp_predictive && fh.hit) {
         Vec3 n = ramp_normal_predictive;
         if (fabsf(n.y) > 1e-4f) {
-            /* Calcular altura de la rampa en posición actual del jugador */
-            f32 ramp_y_at_player = fh_ramp_at_next.y - (n.x * (p->pos.x - next_pos.x) + n.z * (p->pos.z - next_pos.z)) / n.y;
+            /* Calcular altura de la rampa en posición actual del jugador.
+             * Usamos next_pos como punto de referencia de la rampa. */
+            f32 ramp_y_at_player = next_pos.y - (n.x * (p->pos.x - next_pos.x) + n.z * (p->pos.z - next_pos.z)) / n.y;
             if (ramp_y_at_player > fh.y) {  // rampa por encima del suelo plano
                 floor_y = ramp_y_at_player;
                 floor_normal = n;

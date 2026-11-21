@@ -126,4 +126,12 @@ bool collision_intentar_step_up(const Map *map, const Broadphase *bp, Vec3 *pos,
  * Retorna true si hay techo a distancia < max_dist. */
 bool collision_check_ceiling(const Map *map, const Broadphase *bp, Vec3 pos, f32 crouch_height, f32 max_dist);
 
+/* Predictive ramp detection using swept capsule (more reliable than raycast
+ * for detecting ramps at lookahead positions).
+ * Sweeps capsule from current pos to pos + wish_dir*lookahead (horizontal) + small down.
+ * Returns true if ramp detected, fills out_normal with ramp normal. */
+bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
+                                          Vec3 pos, Vec3 wish_dir, f32 lookahead,
+                                          f32 crouch_height, Vec3 *out_normal);
+
 #endif /* OPENSTRIKE_COLLISION_H */
