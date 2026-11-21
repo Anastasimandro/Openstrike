@@ -208,35 +208,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     Vec3 next_pos = p->pos;
 
     if (p->en_suelo && !on_ramp_curr && tiene_wish) {
-        /* Use longer lookahead (8 ticks) so next_pos is deeper on the ramp
-         * where raycast reliably detects it (ramp height > 5u). */
-        f32 lookahead = wish_speed * dt * 8.0f;  // ~8 ticks ahead
+        f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
         next_pos = (Vec3){ p->pos.x + wish_dir_input.x * lookahead, p->pos.y, p->pos.z + wish_dir_input.z * lookahead };
         fh_ramp_at_next = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
-        
-        /* Detect ramp by normal (preferred) OR by height difference (fallback).
-         * Ramp ahead if: normal indicates slope, OR floor at next_pos is >1u higher than current floor. */
-        bool ramp_by_normal = fh_ramp_at_next.hit && fh_ramp_at_next.normal.y < 0.95f && fh_ramp_at_next.normal.y > 0.001f;
-        bool ramp_by_height = fh_ramp_at_next.hit && fh_curr.hit && (fh_ramp_at_next.y > fh_curr.y + 1.0f);
-        
-        if (ramp_by_normal || ramp_by_height) {
+        if (fh_ramp_at_next.hit && fh_ramp_at_next.normal.y < 0.95f && fh_ramp_at_next.normal.y > 0.001f) {
             on_ramp_predictive = true;
-            if (ramp_by_normal) {
-                ramp_normal_predictive = fh_ramp_at_next.normal;
-            } else {
-                /* Estimate ramp normal from height gradient */
-                f32 dx = next_pos.x - p->pos.x;
-                f32 dz = next_pos.z - p->pos.z;
-                f32 dist = sqrtf(dx*dx + dz*dz);
-                if (dist > 0.001f) {
-                    f32 slope = (fh_ramp_at_next.y - fh_curr.y) / dist;
-                    f32 nx = -dx/dist * slope;
-                    f32 nz = -dz/dist * slope;
-                    f32 ny = 1.0f;
-                    f32 len = sqrtf(nx*nx + ny*ny + nz*nz);
-                    ramp_normal_predictive = (Vec3){ nx/len, ny/len, nz/len };
-                }
-            }
+            ramp_normal_predictive = fh_ramp_at_next.normal;
         }
     }
 
