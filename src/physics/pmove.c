@@ -298,40 +298,43 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
      * Solo componente horizontal; la posición vertical la maneja el snap.   *
      * Cap horizontal speed to prevent runaway acceleration on steep ramps.  *
      * FIX: la normal de colisión tiene X invertido para esta rampa (winding
-     * incorrecto en el mapa). Corregimos la normal antes de calcular la    *
-     * gravedad tangencial: la rampa sube en +X → normal debe tener X neg.  */
+     * incorrecto en el mapa). Solo corregimos la normal para la gravedad    *
+     * tangencial, NO para la proyección de wish_dir (que usa el plano real). */
     bool on_ramp_for_gravity = on_ramp_curr || on_ramp_predictive;
     Vec3 ramp_normal_for_gravity = on_ramp_curr ? floor_normal_curr : ramp_normal_predictive;
     if (p->en_suelo && on_ramp_for_gravity) {
         /* Solo si NO se camina HACIA ARRIBA (comparar componente horizontal) */
         /* FIX: la normal de colisión tiene X invertido para esta rampa.
-         * La rampa sube en +X → la normal correcta tiene X negativo.
-         * Corregimos la normal ANTES de calcular la gravedad tangencial. */
+         * Usamos la normal ORIGINAL para walking_up (plano real de movimiento)
+         * y la normal CORREGIDA (X invertido) para la gravedad tangencial. */
         Vec3 corrected_normal = ramp_normal_for_gravity;
         corrected_normal.x = -corrected_normal.x;
         Vec3 gt = gravity_tangent(corrected_normal);
         bool walking_up = false;
         if (tiene_wish) {
-            Vec3 down_slope = { gt.x, 0.0f, gt.z };
-            f32 ds_len = sqrtf(down_slope.x * down_slope.x + down_slope.z * down_slope.z);
+            /* walking_up usa la normal ORIGINAL (plano real de la rampa)
+             * para detectar correctamente si se camina hacia arriba. */
+            Vec3 down_slope_orig = { ramp_normal_for_gravity.x, 0.0f, ramp_normal_for_gravity.z };
+            f32 ds_len = sqrtf(down_slope_orig.x * down_slope_orig.x + down_slope_orig.z * down_slope_orig.z);
             if (ds_len > 0.001f) {
-                down_slope.x /= ds_len; down_slope.z /= ds_len;
-                /* Comparar solo componente horizontal de wish_dir */
+                down_slope_orig.x /= ds_len; down_slope_orig.z /= ds_len;
                 Vec3 wish_horiz = { wish_dir.x, 0.0f, wish_dir.z };
                 f32 wh_len = vec3_len(wish_horiz);
                 if (wh_len > 0.001f) {
                     wish_horiz = vec3_scale(wish_horiz, 1.0f / wh_len);
-                    if (vec3_dot(wish_horiz, down_slope) < 0.0f) {
+                    if (vec3_dot(wish_horiz, down_slope_orig) < 0.0f) {
                         walking_up = true;
                     }
                 }
             }
         }
+        /* Solo aplicar componente horizontal de la gravedad tangencial (CORREGIDA).
+         * La componente vertical la maneja el snap al suelo (vel.y = 0). */
+        Vec3 gt_corrected = gravity_tangent(ramp_normal_for_gravity);
+        gt_corrected.x = -gt_corrected.x;  // Flip X component of tangential gravity
         if (!walking_up) {
-            /* Solo aplicar componente horizontal de la gravedad tangencial.
-             * La componente vertical la maneja el snap al suelo (vel.y = 0). */
-            Vec3 gt_horiz = { gt.x, 0.0f, gt.z };
-            p->vel = vec3_add(p->vel, vec3_scale(gt_horiz, dt));
+            Vec3 gt_horiz = { gt_corrected.x, 0.0f, gt_corrected.z };
+            p->vel = vec3_add(p->vel, vec3_scale(gt_corrected, dt));
         }
     }
 
