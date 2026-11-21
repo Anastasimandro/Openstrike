@@ -266,7 +266,9 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     }
 
     /* ── Gravedad tangencial en rampa ───────────────────────────────────── *
-     * Aplicar si en rampa actual O predictiva (para transición flat→rampa). */
+     * Aplicar si en rampa actual O predictiva (para transición flat→rampa). *
+     * Solo componente horizontal; la posición vertical la maneja el snap.   *
+     * Cap horizontal speed to prevent runaway acceleration on steep ramps.  */
     bool on_ramp_for_gravity = on_ramp_curr || on_ramp_predictive;
     Vec3 ramp_normal_for_gravity = on_ramp_curr ? floor_normal_curr : ramp_normal_predictive;
     if (p->en_suelo && on_ramp_for_gravity) {
@@ -290,7 +292,20 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
             }
         }
         if (!walking_up) {
-            p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
+            /* Solo aplicar componente horizontal de la gravedad tangencial.
+             * La componente vertical la maneja el snap al suelo (vel.y = 0). */
+            Vec3 gt_horiz = { gt.x, 0.0f, gt.z };
+            p->vel = vec3_add(p->vel, vec3_scale(gt_horiz, dt));
+
+            /* Cap horizontal speed from tangential gravity to prevent runaway.
+             * Max reasonable speed: 2x run speed (500 u/s). */
+            f32 max_tangential_speed = SPEED_RUN * 2.0f;
+            f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+            if (vel_xz > max_tangential_speed) {
+                f32 scale = max_tangential_speed / vel_xz;
+                p->vel.x *= scale;
+                p->vel.z *= scale;
+            }
         }
     }
 
