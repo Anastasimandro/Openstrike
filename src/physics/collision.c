@@ -640,10 +640,12 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
     f32 capsule_h = crouch_height - 2.0f * radius;
     if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
     f32 half_height = capsule_h * 0.5f;
+    f32 capsule_half_h = half_height + radius;  // center to top/bottom of capsule
 
+    /* Convert feet position to capsule center for swept capsule */
     Vec3 original_pos = start_pos;
-    Vec3 start = start_pos;
-    Vec3 end = vec3_add(start_pos, vec3_scale(*vel, dt));
+    Vec3 start = { start_pos.x, start_pos.y + capsule_half_h, start_pos.z };
+    Vec3 end = { start_pos.x + vel->x * dt, start_pos.y + capsule_half_h + vel->y * dt, start_pos.z + vel->z * dt };
 
     bool any_correction = false;
 
@@ -670,15 +672,16 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
         any_correction = true;
 
         if (vec3_len(remaining_vel) < 0.01f) {
-            *out_pos = new_pos;
+            *out_pos = (Vec3){ new_pos.x, new_pos.y - capsule_half_h, new_pos.z };
             break;
         }
     }
 
     if (any_correction) {
-        *vel = vec3_scale(vec3_sub(*out_pos, original_pos), 1.0f / dt);
+        Vec3 final_feet = { out_pos->x, out_pos->y, out_pos->z };
+        *vel = vec3_scale(vec3_sub(final_feet, original_pos), 1.0f / dt);
     } else {
-        *out_pos = end;
+        *out_pos = (Vec3){ end.x, end.y - capsule_half_h, end.z };
     }
 
     return any_correction;
@@ -696,16 +699,19 @@ bool collision_intentar_step_up(const Map *map, const Broadphase *bp, Vec3 *pos,
     f32 capsule_h = crouch_height - 2.0f * radius;
     if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
     f32 half_height = capsule_h * 0.5f;
+    f32 capsule_half_h = half_height + radius;  // center to top/bottom of capsule
 
     const f32 BACK_OFFSET = 8.0f;
-    Vec3 start = { pos->x - move_dir->x * BACK_OFFSET, pos->y, pos->z - move_dir->z * BACK_OFFSET };
+    /* Convert feet position to capsule center for swept capsule */
+    Vec3 start = { pos->x - move_dir->x * BACK_OFFSET, pos->y + capsule_half_h, pos->z - move_dir->z * BACK_OFFSET };
     Vec3 horiz_move = { move_dir->x * (STEP_UP_AHEAD_DIST + BACK_OFFSET), 0.0f, move_dir->z * (STEP_UP_AHEAD_DIST + BACK_OFFSET) };
     Vec3 end = { start.x + horiz_move.x, start.y + SV_STEPSIZE, start.z + horiz_move.z };
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN) {
-        f32 ground_y = hit.pos.y;
+        /* hit.pos is capsule center at impact; convert back to feet */
+        f32 ground_y = hit.pos.y - capsule_half_h;
         f32 delta_y = ground_y - pos->y;
 
         if (delta_y > 0.5f && delta_y <= SV_STEPSIZE) {
