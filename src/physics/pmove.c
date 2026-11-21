@@ -297,13 +297,19 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
      * Aplicar si en rampa actual O predictiva (para transición flat→rampa). *
      * Solo componente horizontal; la posición vertical la maneja el snap.   *
      * Cap horizontal speed to prevent runaway acceleration on steep ramps.  *
-     * FIX: asegurar que la gravedad SIEMPRE tire HACIA ABAJO de la rampa    *
-     * (disminuya Y), independientemente de la orientación de la normal.    */
+     * FIX: la normal de colisión tiene X invertido para esta rampa (winding
+     * incorrecto en el mapa). Corregimos la normal antes de calcular la    *
+     * gravedad tangencial: la rampa sube en +X → normal debe tener X neg.  */
     bool on_ramp_for_gravity = on_ramp_curr || on_ramp_predictive;
     Vec3 ramp_normal_for_gravity = on_ramp_curr ? floor_normal_curr : ramp_normal_predictive;
     if (p->en_suelo && on_ramp_for_gravity) {
         /* Solo si NO se camina HACIA ARRIBA (comparar componente horizontal) */
-        Vec3 gt = gravity_tangent(ramp_normal_for_gravity);
+        /* FIX: la normal de colisión tiene X invertido para esta rampa.
+         * La rampa sube en +X → la normal correcta tiene X negativo.
+         * Corregimos la normal ANTES de calcular la gravedad tangencial. */
+        Vec3 corrected_normal = ramp_normal_for_gravity;
+        corrected_normal.x = -corrected_normal.x;
+        Vec3 gt = gravity_tangent(corrected_normal);
         bool walking_up = false;
         if (tiene_wish) {
             Vec3 down_slope = { gt.x, 0.0f, gt.z };
@@ -323,17 +329,8 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         }
         if (!walking_up) {
             /* Solo aplicar componente horizontal de la gravedad tangencial.
-             * La componente vertical la maneja el snap al suelo (vel.y = 0).
-             * FIX: la normal de colisión puede tener componente horizontal invertido.
-             * Para esta rampa (x∈[180,220], sube en +X), ABAJO siempre es -X.
-             * Usamos la posición del jugador para determinar la dirección correcta. */
+             * La componente vertical la maneja el snap al suelo (vel.y = 0). */
             Vec3 gt_horiz = { gt.x, 0.0f, gt.z };
-            if (ramp_normal_for_gravity.y > 0.001f) {
-                /* Para esta rampa (x∈[180,220]), ABAJO siempre es -X.
-                 * El centro está en x=200. Fuerza gravedad hacia -X. */
-                gt_horiz.x = -fabsf(gt_horiz.x);
-                gt_horiz.z = 0.0f;
-            }
             p->vel = vec3_add(p->vel, vec3_scale(gt_horiz, dt));
         }
     }
