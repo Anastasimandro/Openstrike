@@ -296,17 +296,17 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
              * La componente vertical la maneja el snap al suelo (vel.y = 0). */
             Vec3 gt_horiz = { gt.x, 0.0f, gt.z };
             p->vel = vec3_add(p->vel, vec3_scale(gt_horiz, dt));
-
-            /* Cap horizontal speed from tangential gravity to prevent runaway.
-             * Max reasonable speed: 2x run speed (500 u/s). */
-            f32 max_tangential_speed = SPEED_RUN * 2.0f;
-            f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
-            if (vel_xz > max_tangential_speed) {
-                f32 scale = max_tangential_speed / vel_xz;
-                p->vel.x *= scale;
-                p->vel.z *= scale;
-            }
         }
+    }
+
+    /* Cap TOTAL horizontal speed on ground to prevent runaway from any source
+     * (tangential gravity, acceleration, wall slide). Max: 2x run speed. */
+    f32 max_ground_speed = SPEED_RUN * 2.0f;
+    f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+    if (vel_xz > max_ground_speed) {
+        f32 scale = max_ground_speed / vel_xz;
+        p->vel.x *= scale;
+        p->vel.z *= scale;
     }
 
     /* ── Colisión de paredes con swept capsule (vel horizontal + vertical) ── */

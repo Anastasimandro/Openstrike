@@ -666,20 +666,13 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
         Vec3 new_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), move_t));
 
         Vec3 remaining_vel = vec3_scale(vec3_sub(end, start), 1.0f - hit.t);
-        /* Wall collision: slide horizontally only. Project remaining velocity
-         * onto horizontal plane (zero Y) to avoid gaining Y from ramp hits.
-         * Vertical position is handled by floor snap separately. */
-        Vec3 horiz_normal = { hit.normal.x, 0.0f, hit.normal.z };
-        f32 horiz_len = vec3_len(horiz_normal);
-        if (horiz_len > 1e-4f) {
-            horiz_normal = vec3_scale(horiz_normal, 1.0f / horiz_len);
-            f32 into = vec3_dot(remaining_vel, horiz_normal);
-            if (into < 0.0f) {
-                remaining_vel = vec3_sub(remaining_vel, vec3_scale(horiz_normal, into));
-            }
+        /* Swept capsule slide: project remaining velocity onto hit plane (full 3D).
+         * This is the standard GoldSrc PM_FlyMove approach. Floor snap will
+         * later set vel.y = 0 when on ground, correcting any Y from ramp slides. */
+        f32 into = vec3_dot(remaining_vel, hit.normal);
+        if (into < 0.0f) {
+            remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
         }
-        /* Preserve original vertical velocity for gravity/jump handling */
-        remaining_vel.y = vel->y;
 
         start = new_pos;
         end = vec3_add(start, remaining_vel);
@@ -723,9 +716,10 @@ bool collision_intentar_step_up(const Map *map, const Broadphase *bp, Vec3 *pos,
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
-    /* Step-up should only trigger on discrete steps (flat tops, normal.y ≈ 1),
-     * NOT on continuous slopes (ramps). Ramps are handled by floor snap. */
-    const f32 STEP_UP_NORMAL_Y_MIN = 0.95f;  // flat enough to be a "step top"
+    /* Step-up triggers on any walkable surface (normal.y > 0.7) including ramps.
+     * On ramps, this helps the player climb when wall collision slide loses
+     * horizontal speed. The sweep forward+up catches the ramp surface ahead. */
+    const f32 STEP_UP_NORMAL_Y_MIN = 0.7f;  // any walkable surface
     if (hit.hit && hit.normal.y > STEP_UP_NORMAL_Y_MIN) {
         /* hit.pos is capsule center at impact; convert back to feet */
         f32 ground_y = hit.pos.y - capsule_half_h;
