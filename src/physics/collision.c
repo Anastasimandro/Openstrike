@@ -507,37 +507,125 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
     return hit_any;
 }
 
-FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos, f32 crouch_height)
+/* ── Raycast-based floor detection (GoldSrc style) ───────────────────────── *
+ * Uses 5 rays from HIGH above feet level (20 units) to detect both current
+ * floor and ramps above. This solves the "ramp above flat floor" problem.
+ * Ray origin at y=20: hits ramp at y=5 (t=15) before flat floor at y=0 (t=20). */
+static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Vec3 pos, f32 radius)
 {
-    FloorHit result = {0};
+    FloorHit best = {0};
+    best.y = -1e9f;
 
-    if (!map || !map->cargado || map->face_count == 0) return result;
+    if (!map || !map->cargado || map->face_count == 0) return best;
 
-    /* GoldSrc-style: swept capsule down (trace hull) for robust floor detection.
-     * Sweeps capsule from current pos down by SV_STEPSIZE + radius.
-     * This matches PM_CatagorizePosition trace hull and handles ramps correctly
-     * in triangle soup maps where raycasts hit flat floor under ramps. */
-    f32 radius = RADIO_JUGADOR;
-    f32 capsule_h = crouch_height - 2.0f * radius;
-    if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
-    f32 half_height = capsule_h * 0.5f;
+    /* 5 ray origins: center + 4 corners of player footprint.
+     * Start HIGH above feet (20 units) to see ramps above current floor.
+     * Max ramp height in maps is ~18u, so 20u origin clears all ramps. */
+    const f32 RAY_START_OFFSET = 20.0f;
+    f32 ray_radius = radius * 0.7f;
+    Vec3 origins[5] = {
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z },                    // center
+        { pos.x + ray_radius, pos.y + RAY_START_OFFSET, pos.z },       // +x
+        { pos.x - ray_radius, pos.y + RAY_START_OFFSET, pos.z },       // -x
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z + ray_radius },       // +z
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z - ray_radius }        // -z
+    };
 
-    f32 trace_dist = SV_STEPSIZE + radius;  // sweep distance down from feet
-    Vec3 start = pos;
-    Vec3 end = { pos.x, pos.y - trace_dist, pos.z };
+    /* Max trace distance: origin height + step size + radius + max ramp height */
+    f32 max_dist = RAY_START_OFFSET + SV_STEPSIZE + radius + 20.0f;
+    Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
-    /* Use swept capsule (ignores floor/ceiling filter to catch ramps) */
-    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
+    u32 face_count = 0;
+    u16 face_indices[BP_TEMP_MAX];
 
-    if (hit.hit) {
-        /* hit.pos is PLAYER FEET position at impact (start + t*(end-start)).
-         * Floor y = hit.pos.y (feet on floor). */
-        result.hit = true;
-        result.y = hit.pos.y;
-        result.normal = hit.normal;
+    if (bp && bp->built) {
+        /* Broadphase AABB must cover full horizontal spread of rays AND full vertical range.
+         * Vertical: from (pos.y - max_dist) to (pos.y + RAY_START_OFFSET). */
+        Vec3 mins = { pos.x - radius, pos.y - max_dist, pos.z - radius };
+        Vec3 maxs = { pos.x + radius, pos.y + RAY_START_OFFSET + 2.0f, pos.z + radius };
+        face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
+    } else {
+        face_count = map->face_count;
     }
 
-    return result;
+    for (int o = 0; o < 5; o++) {
+        Vec3 origin = origins[o];
+        f32 best_t = max_dist + 1e-4f;
+        Vec3 best_n = { 0.0f, 1.0f, 0.0f };
+        f32 best_hit_y = -1e9f;
+
+        for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
+            u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
+            if (fi >= (u32)map->face_count) continue;
+
+            const MapFace *face = &map->faces[fi];
+            u32 base = face->vertex_start;
+            u32 count = face->vertex_count;
+
+            for (u32 ti = 0; ti + 2 < count; ti += 3) {
+                const MapVertex *va = &map->vertices[base + ti + 0];
+                const MapVertex *vb = &map->vertices[base + ti + 1];
+                const MapVertex *vc = &map->vertices[base + ti + 2];
+
+                Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
+                Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
+                Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+
+                if (triangle_is_degenerate(v0, v1, v2)) continue;
+
+                f32 t;
+                Vec3 n;
+                if (collision_ray_triangulo(origin, dir, v0, v1, v2, &t, &n)) {
+                    if (t >= 1e-4f && t <= max_dist && n.y > SUELO_NORMAL_Y_MIN) {
+                        f32 hit_y = origin.y - t;
+                        /* Tie-breaker: prefer higher hit_y.
+                         * Strongly prefer ramps (n.y < 0.95) over flat floors (n.y > 0.95)
+                         * even if ramp is up to 10 units lower. */
+                        bool better = false;
+                        bool hit_is_ramp = n.y < 0.95f;
+                        bool best_is_flat = best_n.y > 0.95f;
+
+                        if (!best.hit) {
+                            better = true;
+                        } else if (hit_is_ramp && best_is_flat) {
+                            if (hit_y >= best_hit_y - 10.0f) better = true;
+                        } else if (hit_is_ramp && best_n.y < 0.95f) {
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        } else if (!hit_is_ramp && best_is_flat) {
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        } else if (!hit_is_ramp && best_n.y < 0.95f) {
+                            /* flat hit vs ramp best: only take flat if significantly higher */
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        }
+
+                        if (better) {
+                            best_t = t;
+                            best_n = n;
+                            best_hit_y = hit_y;
+                            best.hit = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        /* Among 5 rays, prefer the highest hit (player stands on highest surface) */
+        if (best.hit && best_hit_y > best.y) {
+            best.y = best_hit_y;
+            best.normal = best_n;
+        }
+    }
+
+    return best;
+}
+
+FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos, f32 crouch_height)
+{
+    (void)crouch_height;  // radius is constant for player
+    f32 radius = RADIO_JUGADOR;
+
+    /* Use 5-ray fan from feet level for robust floor detection on triangle soup */
+    return raycast_floor_detection(map, bp, pos, radius);
 }
 
 bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_pos, Vec3 *vel, f32 dt, f32 crouch_height, Vec3 *out_pos)
