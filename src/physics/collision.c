@@ -666,26 +666,26 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
         Vec3 new_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), move_t));
 
         Vec3 remaining_vel = vec3_scale(vec3_sub(end, start), 1.0f - hit.t);
-        /* Slide: for ramps (normal.y > 0.3) use horizontal-only slide to prevent
-         * uncontrolled Y gain. For vertical walls (normal.y <= 0.3) use full 3D slide.
-         * Phys_tick's floor snap will correct position on ramps; wall collision test
-         * doesn't need to climb ramps (that's phys_tick's job via floor snap). */
-        if (hit.normal.y > 0.3f) {
-            /* Horizontal-only slide for ramps and shallow slopes */
-            Vec3 horiz_normal = { hit.normal.x, 0.0f, hit.normal.z };
-            f32 horiz_len = vec3_len(horiz_normal);
-            if (horiz_len > 1e-4f) {
-                horiz_normal = vec3_scale(horiz_normal, 1.0f / horiz_len);
-                f32 into = vec3_dot(remaining_vel, horiz_normal);
-                if (into < 0.0f) {
-                    remaining_vel = vec3_sub(remaining_vel, vec3_scale(horiz_normal, into));
-                }
-            }
-        } else {
-            /* Full 3D slide for vertical walls */
-            f32 into = vec3_dot(remaining_vel, hit.normal);
-            if (into < 0.0f) {
-                remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
+        /* Slide: full 3D slide (GoldSrc PM_FlyMove style). Floor snap in phys_tick
+         * will correct position and zero vertical velocity on ground. */
+        f32 into = vec3_dot(remaining_vel, hit.normal);
+        if (into < 0.0f) {
+            remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
+        }
+
+        /* Ramp floor correction: if hit is a ramp (0.3 < normal.y < 0.95),
+         * snap position to ramp surface at new X/Z to prevent flying up or
+         * stopping at base. This allows wall collision test to climb ramps
+         * without full phys_tick floor snap. */
+        if (hit.normal.y > 0.3f && hit.normal.y < 0.95f) {
+            /* Compute ramp height at new_pos X/Z using hit plane equation:
+             * n.x*(x - hit.x) + n.y*(y - hit.y) + n.z*(z - hit.z) = 0
+             * y = hit.y - (n.x*(x - hit.x) + n.z*(z - hit.z)) / n.y */
+            Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), hit.t));
+            f32 ramp_y = hit_pos.y - (hit.normal.x * (new_pos.x - hit_pos.x) + hit.normal.z * (new_pos.z - hit_pos.z)) / hit.normal.y;
+            f32 capsule_feet_y = ramp_y - capsule_half_h;
+            if (capsule_feet_y > new_pos.y - capsule_half_h) {
+                new_pos.y = capsule_feet_y + capsule_half_h;
             }
         }
 
