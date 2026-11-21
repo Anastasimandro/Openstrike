@@ -246,10 +246,11 @@ static inline bool triangle_is_degenerate(Vec3 v0, Vec3 v1, Vec3 v2)
 
 static inline bool is_floor_or_ceiling(Vec3 n)
 {
-    /* Floor/ceiling (|normal.y| > 0.7) are ignored by wall sweep.
-     * Ramps (0.7 >= |normal.y| > 0.3) are treated as floors, not walls.
-     * The predictive override + raycast floor detection handles ramp transitions. */
-    return n.y > 0.7f || n.y < -0.7f;
+    /* Truly flat floor/ceiling (|normal.y| > 0.95) are ignored by wall sweep.
+     * Ramps (0.7 < |normal.y| < 0.95) ARE collided as walls — this helps the
+     * swept capsule push the player up the ramp. The horizontal-only slide
+     * fix prevents unwanted Y velocity from the slide. */
+    return n.y > 0.95f || n.y < -0.7f;
 }
 
 SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
