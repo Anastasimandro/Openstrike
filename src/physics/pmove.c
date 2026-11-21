@@ -194,9 +194,26 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     f32 wish_speed = 0.0f;
     bool tiene_wish = vec3_len(wish_dir) > 0.001f;
 
-    /* ── Si en rampa, proyectar wish_dir al plano ANTES de acelerar ─────── */
-    if (on_ramp_curr && tiene_wish) {
-        wish_dir = vec3_project_on_plane(wish_dir, floor_normal_curr);
+    /* ── Predictive: detectar rampa inminente (flat→rampa) ──────────────── *
+     * Si en suelo plano pero hay wish_dir, mirar adelante ~4 ticks.        *
+     * Si detecta rampa, usar su normal para proyectar wish_dir YA.         */
+    bool on_ramp_predictive = false;
+    Vec3 ramp_normal_predictive = floor_normal_curr;
+    if (p->en_suelo && !on_ramp_curr && tiene_wish) {
+        f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
+        Vec3 next_pos = { p->pos.x + wish_dir.x * lookahead, p->pos.y, p->pos.z + wish_dir.z * lookahead };
+        FloorHit fh_pred = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
+        if (fh_pred.hit && fh_pred.normal.y < 0.95f && fh_pred.normal.y > 0.001f) {
+            on_ramp_predictive = true;
+            ramp_normal_predictive = fh_pred.normal;
+        }
+    }
+
+    /* ── Si en rampa (actual o predictiva), proyectar wish_dir al plano ─── */
+    Vec3 ramp_normal_for_wish = on_ramp_curr ? floor_normal_curr : (on_ramp_predictive ? ramp_normal_predictive : (Vec3){0,1,0});
+    bool use_ramp_wish = on_ramp_curr || on_ramp_predictive;
+    if (use_ramp_wish && tiene_wish) {
+        wish_dir = vec3_project_on_plane(wish_dir, ramp_normal_for_wish);
         wish_dir.y = 0.0f;
         f32 len = sqrtf(wish_dir.x * wish_dir.x + wish_dir.z * wish_dir.z);
         if (len > 0.001f) {
@@ -296,14 +313,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         p->pos.y = fh.y;
         p->en_suelo = true;
 
-        /* En rampa: re-proyectar velocity al plano para el próximo tick *
-         * (la gravedad tangencial ya se aplicó arriba)                  */
+        /* En rampa: proyectar velocity COMPLETA (3D) al plano para el próximo tick *
+         * La gravedad tangencial YA está en vel y es tangente al plano.             */
         if (fh.normal.y < 0.95f) {
-            /* Velocidad horizontal proyectada al plano de la rampa */
-            Vec3 vel_flat = { p->vel.x, 0.0f, p->vel.z };
-            Vec3 vel_proj = vec3_project_on_plane(vel_flat, fh.normal);
-            p->vel.x = vel_proj.x;
-            p->vel.z = vel_proj.z;
+            /* Proyectar velocity 3D completa al plano de la rampa */
+            Vec3 vel_proj = vec3_project_on_plane(p->vel, fh.normal);
+            p->vel = vel_proj;
             p->pos.y = fh.y;
         }
 
