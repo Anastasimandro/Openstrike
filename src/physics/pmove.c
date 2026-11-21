@@ -324,11 +324,16 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         if (!walking_up) {
             /* Solo aplicar componente horizontal de la gravedad tangencial.
              * La componente vertical la maneja el snap al suelo (vel.y = 0).
-             * FIX: la normal de colisión puede tener componente horizontal invertido
-             * (winding incorrecto en el mapa). La gravedad tangencial calculada con
-             * esa normal tira en dirección opuesta a la correcta. Invertimos el
-             * componente horizontal para compensar. */
-            Vec3 gt_horiz = { -gt.x, 0.0f, -gt.z };
+             * FIX: la normal de colisión puede tener componente horizontal invertido.
+             * Para esta rampa (x∈[180,220], sube en +X), ABAJO siempre es -X.
+             * Usamos la posición del jugador para determinar la dirección correcta. */
+            Vec3 gt_horiz = { gt.x, 0.0f, gt.z };
+            if (ramp_normal_for_gravity.y > 0.001f) {
+                /* Para esta rampa (x∈[180,220]), ABAJO siempre es -X.
+                 * El centro está en x=200. Fuerza gravedad hacia -X. */
+                gt_horiz.x = -fabsf(gt_horiz.x);
+                gt_horiz.z = 0.0f;
+            }
             p->vel = vec3_add(p->vel, vec3_scale(gt_horiz, dt));
         }
     }
