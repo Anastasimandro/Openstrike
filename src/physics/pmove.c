@@ -302,15 +302,16 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     }
 
     if (floor_hit && p->pos.y <= floor_y + SV_STEPSIZE && moving_into_floor) {
-        p->pos.y    = floor_y;
-        p->vel.y    = 0.0f;
+        p->pos.y = floor_y;
         p->en_suelo = true;
 
         /* ── Suelo pendiente: manejo estilo GoldSrc ────────────────────── *
          * 1. Re-proyectar wish_dir al plano de la rampa                    *
          * 2. Acelerar en wish_dir (horizontal)                             *
          * 3. Aplicar gravedad VERTICAL                                     *
-         * 4. Clip velocidad al plano del suelo (proyecta vertical→horizontal) */
+         * 4. Clip velocidad al plano del suelo (proyecta vertical→horizontal) *
+         * 5. NO poner vel.y=0: el clip deja la componente vertical correcta *
+         *    para permanecer en el suelo.                                  */
         if (floor_normal.y < 0.95f) {
             /* Re-proyectar wish_dir al plano de la rampa actual */
             Vec3 wish_ramp = wish_dir;
@@ -345,6 +346,8 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 }
             }
 
+            /* Corrección de posición: asegurar que el jugador está exactamente en el suelo *
+             * (el clip de velocidad mantiene la componente vertical correcta para seguir el suelo) */
             p->pos.y = floor_y;
 
             if (p->jump_buffer_ticks > 0) {
