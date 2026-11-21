@@ -44,6 +44,13 @@ jobs:
           tar -xzf SDL2_mixer.tar.gz
           mkdir -p deps/windows/SDL2_mixer/x86_64-w64-mingw32
           cp -r SDL2_mixer-2.8.0/x86_64-w64-mingw32/* deps/windows/SDL2_mixer/x86_64-w64-mingw32/
+      - name: Descargar libxmp.dll para Windows (MSYS2)
+        run: |
+          curl -L https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-libxmp-4.7.4-1-any.pkg.tar.zst -o libxmp.pkg.tar.zst
+          7z x libxmp.pkg.tar.zst > /dev/null
+          7z x libxmp.pkg.tar > /dev/null
+          mkdir -p deps/windows
+          cp mingw64/bin/libxmp.dll deps/windows/libxmp.dll
       - name: Build Windows x64
         run: |
           cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
