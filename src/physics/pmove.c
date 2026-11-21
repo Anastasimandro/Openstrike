@@ -328,52 +328,13 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Detectar suelo real en NUEVA posición ──────────────────────────── */
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
-    /* ── Predictive override para snap ──────────────────────────────────── *
-     * Solo aplicar durante la TRANSICIÓN flat→rampa (fh no es rampa aún, pero
-     * predictive sí detecta rampa adelante). Una vez en la rampa (fh.normal.y < 0.95),
-     * confiamos en collision_detectar_suelo que ya devuelve la altura correcta. */
+    /* Predictive override DESACTIVADO: el raycast con mayor alcance horizontal
+     * (QUERY_RADIUS=80, ray_radius=32) detecta la rampa con suficiente antelación.
+     * El override creaba un bucle de realimentación que hacía volar al jugador. */
     f32 floor_y = fh.y;
     Vec3 floor_normal = fh.normal;
     bool floor_hit = fh.hit;
-    bool fh_is_ramp = fh.hit && fh.normal.y < 0.95f && fh.normal.y > 0.001f;
-
-    if (!fh_is_ramp && on_ramp_predictive && fh.hit) {
-        Vec3 n = ramp_normal_predictive;
-        if (fabsf(n.y) > 1e-4f) {
-            /* Estimar posición horizontal después de este tick */
-            Vec3 predicted_next = p->pos;
-            if (tiene_wish) {
-                predicted_next.x += wish_dir.x * wish_speed * dt;
-                predicted_next.z += wish_dir.z * wish_speed * dt;
-            }
-            /* Si el jugador está MUY cerca del inicio de la rampa (predicted_next
-             * está a menos de 10 unidades del hit en lookahead en X/Z),
-             * usar directamente la altura del lookahead si es una transición suave
-             * (diferencia < 3 unidades con el suelo actual). */
-            f32 dx = predicted_next.x - next_pos.x;
-            f32 dz = predicted_next.z - next_pos.z;
-            f32 dist_to_lookahead = sqrtf(dx * dx + dz * dz);
-            
-            if (dist_to_lookahead < 10.0f) {
-                /* Muy cerca de la rampa: confiar en la altura del lookahead
-                 * solo si la transición es suave (salto < 3 unidades). */
-                if (next_pos.y > fh.y && next_pos.y < fh.y + 3.0f) {
-                    floor_y = next_pos.y;
-                    floor_normal = n;
-                    floor_hit = true;
-                }
-            } else {
-                /* Lejos: extrapolación plana solo si da altura válida y mayor,
-                 * y la diferencia con el suelo actual es pequeña (< 3 unidades). */
-                f32 ramp_y_at_next = next_pos.y - (n.x * (predicted_next.x - next_pos.x) + n.z * (predicted_next.z - next_pos.z)) / n.y;
-                if (ramp_y_at_next > 0.0f && ramp_y_at_next > fh.y && ramp_y_at_next < fh.y + 3.0f) {
-                    floor_y = ramp_y_at_next;
-                    floor_normal = n;
-                    floor_hit = true;
-                }
-            }
-        }
-    }
+    (void)on_ramp_predictive; (void)ramp_normal_predictive; (void)next_pos;
 
     /* ── Snap al suelo ──────────────────────────────────────────────────── */
     bool moving_into_floor = (p->vel.y <= 0.0f);
