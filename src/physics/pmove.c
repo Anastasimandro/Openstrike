@@ -301,7 +301,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     /* ── Colisión de paredes con swept capsule (vel horizontal + vertical) ── */
     Vec3 pos_after_walls;
-    collision_bloquear_pared(map, bp, p->pos, &p->vel, dt, p->crouch_height, &pos_after_walls);
+    collision_bloquear_pared(map, bp, p->pos, &p->vel, dt, p->crouch_height, floor_normal_curr, &pos_after_walls);
 
     /* Cap TOTAL horizontal speed on ground to prevent runaway from any source
      * (tangential gravity, acceleration, wall slide). Max: 2x run speed. */

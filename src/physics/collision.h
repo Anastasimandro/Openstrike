@@ -115,9 +115,11 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
  * Barrido desde start_pos hasta start_pos + vel*dt con cápsula del jugador.
  * Desliza proyectando velocidad restante en el plano de contacto (iterativo, máx 2 pasadas).
  * broadphase: para O(1) en mapas grandes.
+ * floor_normal: normal del suelo actual (para evitar corrección de rampa en la superficie
+ *   sobre la que ya está el jugador). Pasar {0,1,0} si no se conoce.
  * Escribe la posición final en out_pos y actualiza vel (velocidad real tras slide).
  * Retorna true si se corrigió algo. */
-bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_pos, Vec3 *vel, f32 dt, f32 crouch_height, Vec3 *out_pos);
+bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_pos, Vec3 *vel, f32 dt, f32 crouch_height, Vec3 floor_normal, Vec3 *out_pos);
 
 /* Step-up robusto: barrido de cápsula hacia adelante y arriba.
  * Intenta mover la cápsula en dirección 'move_dir' (XZ normalizada) por STEP_UP_AHEAD_DIST,
