@@ -442,8 +442,10 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
                            u32 face_count, Vec3 start, Vec3 dir, f32 max_dist,
                            f32 *best_t, Vec3 *best_normal)
 {
+    (void)bp;
     bool hit_any = false;
     *best_t = max_dist + 1e-4f;
+    f32 best_y = -1e9f;
 
     for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
         u32 fi = face_indices ? face_indices[fi_idx] : fi_idx;
@@ -467,10 +469,24 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
             f32 t;
             Vec3 n;
             if (collision_ray_triangulo(start, dir, v0, v1, v2, &t, &n)) {
-                if (t >= 0.0f && t < *best_t && n.y > SUELO_NORMAL_Y_MIN) {
-                    *best_t = t;
-                    *best_normal = n;
-                    hit_any = true;
+                if (t >= 0.0f && t <= max_dist && n.y > SUELO_NORMAL_Y_MIN) {
+                    f32 hit_y = start.y - t;
+                    bool better = false;
+                    if (!hit_any) {
+                        better = true;
+                    } else if (fabsf(hit_y - best_y) <= 1.0f) {
+                        /* Tie-breaker: prefer steeper slopes (lower normal.y) at same height */
+                        if (n.y < *best_normal - 1e-4f) better = true;
+                    } else if (hit_y > best_y + 1e-4f) {
+                        /* Prefer higher hit (closer to start) */
+                        better = true;
+                    }
+                    if (better) {
+                        *best_t = t;
+                        *best_normal = n;
+                        best_y = hit_y;
+                        hit_any = true;
+                    }
                 }
             }
         }

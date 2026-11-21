@@ -335,11 +335,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 f32 ws = p->agachado ? SPEED_DUCK :
                          p->caminando ? SPEED_WALK : SPEED_RUN;
                 acelerar(p, wish_ramp, ws, SV_ACCELERATE, dt);
-            } else if (vel_xz > 0.1f) {
+            } else {
+                /* Sin input en rampa: SIEMPRE aplicar gravedad tangencial *
+                 * (incluso si el jugador está quieto: empieza a deslizar) */
                 Vec3 gt = gravity_tangent(fh.normal);
                 p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
-            } else {
-                aplicar_friccion(p, dt);
             }
 
             /* Clip velocidad al plano del suelo (eliminar componente normal) */
