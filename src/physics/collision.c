@@ -525,8 +525,9 @@ static FloorHit swept_sphere_floor_detection(const Map *map, const Broadphase *b
 
     if (!map || !map->cargado || map->face_count == 0) return best;
 
-    /* Sweep sphere from 20u above player down to -20u (covers max ramp 18u + margin) */
-    const f32 SWEEP_START_OFFSET = 20.0f;
+    /* Sweep sphere from 40u above player down to -20u.
+     * Start must be high enough: max_ramp_surface (18) + radius (16) / min_n_y (~0.7) ≈ 40. */
+    const f32 SWEEP_START_OFFSET = 40.0f;
     const f32 SWEEP_END_OFFSET = 20.0f;
     Vec3 sphere_start = { pos.x, pos.y + SWEEP_START_OFFSET, pos.z };
     Vec3 sphere_end   = { pos.x, pos.y - SWEEP_END_OFFSET, pos.z };
@@ -573,7 +574,10 @@ static FloorHit swept_sphere_floor_detection(const Map *map, const Broadphase *b
             Vec3 n;
             if (sweep_sphere_tri(sphere_start, sphere_end, radius, v0, v1, v2, &t, &n)) {
                 if (t >= 1e-4f && t <= 1.0f && n.y > SUELO_NORMAL_Y_MIN) {
-                    f32 hit_y = sphere_start.y - t * (sphere_start.y - sphere_end.y);
+                    /* hit_y is sphere center y at impact. Convert to surface y:   *
+                     * surface_y = sphere_center_y - n.y * radius.                */
+                    f32 sphere_center_y = sphere_start.y - t * (sphere_start.y - sphere_end.y);
+                    f32 hit_y = sphere_center_y - n.y * radius;
                     /* Prefer ramps (n.y < 0.95) over flat floor */
                     bool better = false;
                     bool hit_is_ramp = n.y < 0.95f;
