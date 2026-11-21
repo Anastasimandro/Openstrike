@@ -529,9 +529,10 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
     if (!map || !map->cargado || map->face_count == 0) return best;
 
     const f32 RAY_START_OFFSET = 40.0f;
-    /* Use 1x player radius (16) so side rays reach further out, catching ramps *
-     * when approaching from flat floor (ramp starts at x=180, player at x=170). */
-    f32 ray_radius = radius * 1.0f;  /* 16 units */
+    /* Use 2x player radius (32) so side rays reach further out, catching ramps *
+     * when approaching from flat floor (ramp starts at x=180, player at x=170).
+     * Side rays at ±32 units can reach the ramp start from 10 units away. */
+    f32 ray_radius = radius * 2.0f;  /* 32 units */
     Vec3 origins[5] = {
         { pos.x, pos.y + RAY_START_OFFSET, pos.z },
         { pos.x + ray_radius, pos.y + RAY_START_OFFSET, pos.z },
@@ -543,10 +544,11 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
     f32 max_dist = RAY_START_OFFSET + SV_STEPSIZE + radius + 20.0f;
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
-    /* Use wider horizontal query radius (3x player radius = 48) to catch ramp triangles
+    /* Use wider horizontal query radius (5x player radius = 80) to catch ramp triangles
      * that extend beyond the player's immediate footprint (e.g., wide ramps up to 80 units wide).
-     * The test ramp spans z=[-40, 40], so at lookahead_z=0 we need radius >= 40 to include edges. */
-    const f32 QUERY_RADIUS = radius * 3.0f;  /* 48 units */
+     * The test ramp spans z=[-40, 40] and starts at x=180 (10 units ahead of player at x=170).
+     * Side rays at ±2x radius (32 units) can reach the ramp start from 10 units away. */
+    const f32 QUERY_RADIUS = radius * 5.0f;  /* 80 units */
 
     u32 face_count = 0;
     u16 face_indices[BP_TEMP_MAX];
