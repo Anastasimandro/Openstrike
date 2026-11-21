@@ -245,10 +245,12 @@ static inline bool triangle_is_degenerate(Vec3 v0, Vec3 v1, Vec3 v2)
     return area2 < 1e-12f;  // squared area < epsilon
 }
 
-/* Filtrar triángulos de suelo/techo durante barrido horizontal de paredes. */
+/* Filtrar triángulos de suelo/techo durante barrido horizontal de paredes.
+ * Solo filtrar superficies VERDADERAMENTE horizontales (normal.y > 0.98 o < -0.98).
+ * Rampas (0.01 < normal.y < 0.98) deben colisionar como paredes para poder subirlas. */
 static inline bool is_floor_or_ceiling(Vec3 n)
 {
-    return n.y > 0.7f || n.y < -0.7f;
+    return n.y > 0.98f || n.y < -0.98f;
 }
 
 SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
@@ -500,28 +502,22 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (!map || !map->cargado || map->face_count == 0) return result;
 
-    /* GoldSrc-style: multiple raycasts from top of capsule to handle ramps above feet.
-     * 5 rays: center + 4 corners of player's footprint (radius * 0.7).
-     * Start from capsule top (pos.y + crouch_height) to catch ramps rising above feet. */
+    /* GoldSrc-style: SINGLE raycast from player center (not 5-ray fan).
+     * The 5-ray fan picks the HIGHEST point under footprint, which on a ramp
+     * is UP the slope, causing player to snap UP instead of down.
+     * Use center ray only for floor height/normal. Step-up uses swept capsule. */
     f32 radius = RADIO_JUGADOR;
     f32 trace_dist = crouch_height + SV_STEPSIZE;  // cover from capsule top down to feet - step
     f32 start_y = pos.y + crouch_height;  // top of capsule
-    f32 corner = radius * 0.7f;
 
-    Vec3 starts[5] = {
-        { pos.x, start_y, pos.z },                          // center
-        { pos.x + corner, start_y, pos.z + corner },        // NE
-        { pos.x - corner, start_y, pos.z + corner },        // NW
-        { pos.x + corner, start_y, pos.z - corner },        // SE
-        { pos.x - corner, start_y, pos.z - corner },        // SW
-    };
+    Vec3 start = { pos.x, start_y, pos.z };
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
     f32 best_t = trace_dist + 1e-4f;
     Vec3 best_normal = { 0.0f, 1.0f, 0.0f };
     bool hit_any = false;
 
-    /* Broadphase query for the union of all 5 ray AABBs */
+    /* Broadphase query for center ray AABB */
     u32 face_count = 0;
     u16 *face_indices = NULL;
     if (bp && bp->built) {
@@ -534,15 +530,13 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
         face_indices = NULL;
     }
 
-    for (int i = 0; i < 5; i++) {
-        f32 t;
-        Vec3 n;
-        if (raycast_floor(map, bp, face_indices, face_count, starts[i], dir, trace_dist, &t, &n)) {
-            if (t < best_t) {
-                best_t = t;
-                best_normal = n;
-                hit_any = true;
-            }
+    f32 t;
+    Vec3 n;
+    if (raycast_floor(map, bp, face_indices, face_count, start, dir, trace_dist, &t, &n)) {
+        if (t < best_t) {
+            best_t = t;
+            best_normal = n;
+            hit_any = true;
         }
     }
 

@@ -281,19 +281,29 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
     /* ── Override predictivo para transición flat→rampa ────────────────__ *
-     * Si el check predictivo detectó rampa, SIEMPRE usar su normal y     *
-     * calcular la altura de la rampa en la posición actual.              *
-     * Clampear la altura para no bajar del suelo plano detectado (fh.y). */
+     * Solo aplicar si: (1) check predictivo detectó rampa, Y
+     * (2) el jugador YA está en la rampa (floor detection real detecta rampa)
+     * O (3) el jugador está muy cerca de la transición (< 8 unidades).
+     * Esto evita usar normal de rampa con altura de suelo plano. */
     bool predictive_ramp_valid = false;
     f32 predictive_ramp_y = fh.y;
     Vec3 predictive_ramp_normal = fh.normal;
 
+    bool fh_is_ramp = fh.hit && fh.normal.y < 0.95f && fh.normal.y > 0.001f;
+    f32 dist_to_ramp = 0.0f;
+    if (fh_predictive.hit && ramp_normal.y < 0.99f && fabsf(ramp_normal.y) > 1e-4f) {
+        /* Distancia horizontal desde pos actual a next_pos (punto predictivo) */
+        f32 dx = next_pos.x - p->pos.x;
+        f32 dz = next_pos.z - p->pos.z;
+        dist_to_ramp = sqrtf(dx*dx + dz*dz);
+    }
+
     if (on_ramp && fh_predictive.hit && ramp_normal.y < 0.99f) {
-        /* Calcular altura de rampa en posición actual del jugador:
-         * Plano: n · (X - P) = 0  =>  Y = Py - (nx*(X-Px) + nz*(Z-Pz)) / ny
-         * P = posición predictiva (next_pos) con altura fh_predictive.y */
-        f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
-        if (fabsf(ny) > 1e-4f) {
+        if (fh_is_ramp || dist_to_ramp < 8.0f) {
+            /* Calcular altura de rampa en posición actual del jugador:
+             * Plano: n · (X - P) = 0  =>  Y = Py - (nx*(X-Px) + nz*(Z-Pz)) / ny
+             * P = posición predictiva (next_pos) con altura fh_predictive.y */
+            f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
             f32 ramp_y_at_player = fh_predictive.y - (nx * (p->pos.x - next_pos.x) + nz * (p->pos.z - next_pos.z)) / ny;
             /* Clampear: no bajar del suelo plano real (evita snap a altura negativa) */
             if (ramp_y_at_player < fh.y) ramp_y_at_player = fh.y;
