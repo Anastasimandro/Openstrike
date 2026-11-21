@@ -561,10 +561,17 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
         face_count = map->face_count;
     }
 
+    /* Track center ray hit separately - it represents the player's actual position.
+     * Side rays are only for step-up detection (higher floor) and predictive hints. */
+    FloorHit center_hit = { 0 };
+    center_hit.y = -1e9f;
+    center_hit.normal = (Vec3){ 0.0f, 1.0f, 0.0f };
+
     for (int o = 0; o < 5; o++) {
         Vec3 origin = origins[o];
         Vec3 best_n = { 0.0f, 1.0f, 0.0f };
         f32 best_hit_y = -1e9f;
+        bool is_center_ray = (o == 0);
 
         for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
             u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
@@ -597,8 +604,12 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
                         if (!best.hit) {
                             better = true;
                         } else if (hit_is_ramp && best_is_flat) {
-                            /* Strongly prefer ramps over flat floor when approaching */
-                            if (hit_y >= best_hit_y - 20.0f) better = true;
+                            /* Prefer ramp over flat ONLY if center ray hits ramp,
+                             * or if this is center ray and current best is from side ray.
+                             * This prevents side rays from pulling player onto ramp prematurely. */
+                            if (is_center_ray || (best_n.y < 0.95f && best_n.y > 0.001f)) {
+                                if (hit_y >= best_hit_y - 20.0f) better = true;
+                            }
                         } else if (hit_is_ramp && best_n.y < 0.95f) {
                             /* Between ramps, prefer higher hit (closer to player) */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
@@ -606,7 +617,7 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
                             /* Between flat floors, prefer higher */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
                         }
-                        /* Never prefer flat floor over ramp once a ramp is detected */
+                        /* Never prefer flat floor over ramp once center ray confirms ramp */
 
                         if (better) {
                             best_n = n;
@@ -622,7 +633,29 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
             best.y = best_hit_y;
             best.normal = best_n;
         }
+
+        /* Store center ray result separately */
+        if (is_center_ray && best.hit) {
+            center_hit = best;
+        }
     }
+
+    /* Use center ray hit as primary floor detection.
+     * Only override with best (side ray) hit if:
+     * 1. Center ray hit nothing, OR
+     * 2. Side ray hit is significantly higher (step up: > 0.5 units) */
+    if (center_hit.hit) {
+        if (best.hit && best.y > center_hit.y + 0.5f) {
+            /* Side ray found a step up - use it */
+            return best;
+        }
+        /* Center ray hit is authoritative for current floor */
+        return center_hit;
+    } else if (best.hit) {
+        /* Center ray missed - fall back to best side ray hit */
+        return best;
+    }
+    return center_hit;  // no hits at all
 
     return best;
 }
