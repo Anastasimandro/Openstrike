@@ -292,10 +292,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
     /* Override: si el check predictivo detectó rampa pero el floor detection
-     * devuelve suelo plano (transición flat→rampa), confiar en el predictivo. */
+     * devuelve suelo plano (transición flat→rampa), usar normal de rampa
+     * pero NO el y predictivo (que está adelante del jugador).
+     * El snap usará la altura real del suelo en la posición actual. */
     if (on_ramp && fh.hit && fh.normal.y > 0.99f && ramp_normal.y < 0.99f && fh_predictive.hit) {
         fh.normal = ramp_normal;
-        fh.y = fh_predictive.y;
+        /* fh.y se mantiene del floor detection real en la posición actual */
     }
 
     /* Snap al suelo: en rampa permitir snap aunque el jugador esté ligeramente *
@@ -331,15 +333,15 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 }
             }
 
+            /* SIEMPRE aplicar gravedad tangencial en rampa (componente de gravedad paralela al plano) *
+             * Esto acelera cuesta abajo y frena cuesta arriba, independientemente del input.        */
+            Vec3 gt = gravity_tangent(fh.normal);
+            p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
+
             if (tiene_wish) {
                 f32 ws = p->agachado ? SPEED_DUCK :
                          p->caminando ? SPEED_WALK : SPEED_RUN;
                 acelerar(p, wish_ramp, ws, SV_ACCELERATE, dt);
-            } else {
-                /* Sin input en rampa: SIEMPRE aplicar gravedad tangencial *
-                 * (incluso si el jugador está quieto: empieza a deslizar) */
-                Vec3 gt = gravity_tangent(fh.normal);
-                p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
             }
 
             /* Clip velocidad al plano del suelo (eliminar componente normal) */
