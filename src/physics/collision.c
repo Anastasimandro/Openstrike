@@ -514,26 +514,34 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
     return false;
 }
 
-/* ── Swept sphere floor detection (replaces raycast) ─────────────────────── *
- * Sweeps a sphere downward from high above to detect floor/ramps.          *
- * Uses the robust sweep_sphere_tri function which handles edge cases.      *
- * More reliable than raycast for detecting ramps at triangle edges.        */
-static FloorHit swept_sphere_floor_detection(const Map *map, const Broadphase *bp, Vec3 pos, f32 radius)
+/* ── Raycast-based floor detection (GoldSrc style) ───────────────────────── *
+ * Uses 5 rays from HIGH above feet level (20 units) to detect both current
+ * floor and ramps above. This solves the "ramp above flat floor" problem.
+ * Ray origin at y=20: hits ramp at y=5 (t=15) before flat floor at y=0 (t=20). */
+static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Vec3 pos, f32 radius)
 {
     FloorHit best = {0};
     best.y = -1e9f;
 
     if (!map || !map->cargado || map->face_count == 0) return best;
 
-    /* Sweep sphere from 40u above player down to -20u.
-     * Start must be high enough: max_ramp_surface (18) + radius (16) / min_n_y (~0.7) ≈ 40. */
-    const f32 SWEEP_START_OFFSET = 40.0f;
-    const f32 SWEEP_END_OFFSET = 20.0f;
-    Vec3 sphere_start = { pos.x, pos.y + SWEEP_START_OFFSET, pos.z };
-    Vec3 sphere_end   = { pos.x, pos.y - SWEEP_END_OFFSET, pos.z };
-    f32 max_dist = SWEEP_START_OFFSET + SWEEP_END_OFFSET;
+    const f32 RAY_START_OFFSET = 20.0f;
+    /* Use 1x player radius (16) so side rays reach further out, catching ramps *
+     * when approaching from flat floor (ramp starts at x=180, player at x=170). */
+    f32 ray_radius = radius * 1.0f;  /* 16 units */
+    Vec3 origins[5] = {
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z },
+        { pos.x + ray_radius, pos.y + RAY_START_OFFSET, pos.z },
+        { pos.x - ray_radius, pos.y + RAY_START_OFFSET, pos.z },
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z + ray_radius },
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z - ray_radius }
+    };
 
-    /* Use wider horizontal query radius (2x player radius) to catch ramp triangles */
+    f32 max_dist = RAY_START_OFFSET + SV_STEPSIZE + radius + 20.0f;
+    Vec3 dir = { 0.0f, -1.0f, 0.0f };
+
+    /* Use wider horizontal query radius (2x player radius) to catch ramp triangles
+     * that extend beyond the player's immediate footprint (e.g., wide ramps). */
     const f32 QUERY_RADIUS = radius * 2.0f;  /* 32 units */
 
     u32 face_count = 0;
@@ -541,74 +549,75 @@ static FloorHit swept_sphere_floor_detection(const Map *map, const Broadphase *b
 
     if (bp && bp->built) {
         Vec3 mins = { pos.x - QUERY_RADIUS, pos.y - max_dist, pos.z - QUERY_RADIUS };
-        Vec3 maxs = { pos.x + QUERY_RADIUS, pos.y + SWEEP_START_OFFSET + 2.0f, pos.z + QUERY_RADIUS };
+        Vec3 maxs = { pos.x + QUERY_RADIUS, pos.y + RAY_START_OFFSET + 2.0f, pos.z + QUERY_RADIUS };
         face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
     } else {
         face_count = map->face_count;
     }
 
-    f32 best_hit_y = -1e9f;
-    Vec3 best_n = { 0.0f, 1.0f, 0.0f };
-    bool hit_any = false;
+    for (int o = 0; o < 5; o++) {
+        Vec3 origin = origins[o];
+        Vec3 best_n = { 0.0f, 1.0f, 0.0f };
+        f32 best_hit_y = -1e9f;
 
-    for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
-        u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
-        if (fi >= (u32)map->face_count) continue;
+        for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
+            u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
+            if (fi >= (u32)map->face_count) continue;
 
-        const MapFace *face = &map->faces[fi];
-        u32 base = face->vertex_start;
-        u32 count = face->vertex_count;
+            const MapFace *face = &map->faces[fi];
+            u32 base = face->vertex_start;
+            u32 count = face->vertex_count;
 
-        for (u32 ti = 0; ti + 2 < count; ti += 3) {
-            const MapVertex *va = &map->vertices[base + ti + 0];
-            const MapVertex *vb = &map->vertices[base + ti + 1];
-            const MapVertex *vc = &map->vertices[base + ti + 2];
+            for (u32 ti = 0; ti + 2 < count; ti += 3) {
+                const MapVertex *va = &map->vertices[base + ti + 0];
+                const MapVertex *vb = &map->vertices[base + ti + 1];
+                const MapVertex *vc = &map->vertices[base + ti + 2];
 
-            Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
-            Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
-            Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+                Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
+                Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
+                Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
 
-            if (triangle_is_degenerate(v0, v1, v2)) continue;
+                if (triangle_is_degenerate(v0, v1, v2)) continue;
 
-            f32 t;
-            Vec3 n;
-            if (sweep_sphere_tri(sphere_start, sphere_end, radius, v0, v1, v2, &t, &n)) {
-                if (t >= 1e-4f && t <= 1.0f && n.y > SUELO_NORMAL_Y_MIN) {
-                    /* hit_y is sphere center y at impact. Convert to surface y:   *
-                     * surface_y = sphere_center_y - n.y * radius.                */
-                    f32 sphere_center_y = sphere_start.y - t * (sphere_start.y - sphere_end.y);
-                    f32 hit_y = sphere_center_y - n.y * radius;
-                    /* Prefer ramps (n.y < 0.95) over flat floor */
-                    bool better = false;
-                    bool hit_is_ramp = n.y < 0.95f;
-                    bool best_is_flat = best_n.y > 0.95f;
+                f32 t;
+                Vec3 n;
+                if (collision_ray_triangulo(origin, dir, v0, v1, v2, &t, &n)) {
+                    if (t >= 1e-4f && t <= max_dist && n.y > SUELO_NORMAL_Y_MIN) {
+                        f32 hit_y = origin.y - t;
+                        bool better = false;
+                        bool hit_is_ramp = n.y < 0.95f;
+                        bool best_is_flat = best_n.y > 0.95f;
 
-                    if (!hit_any) {
-                        better = true;
-                    } else if (hit_is_ramp && best_is_flat) {
-                        if (hit_y >= best_hit_y - 20.0f) better = true;
-                    } else if (hit_is_ramp && best_n.y < 0.95f) {
-                        if (hit_y > best_hit_y + 1e-4f) better = true;
-                    } else if (!hit_is_ramp && best_is_flat) {
-                        if (hit_y > best_hit_y + 1e-4f) better = true;
-                    } else if (!hit_is_ramp && best_n.y < 0.95f) {
-                        if (hit_y >= best_hit_y - 20.0f) better = true;
-                    }
+                        if (!best.hit) {
+                            better = true;
+                        } else if (hit_is_ramp && best_is_flat) {
+                            /* Strongly prefer ramps over flat floor when approaching */
+                            if (hit_y >= best_hit_y - 20.0f) better = true;
+                        } else if (hit_is_ramp && best_n.y < 0.95f) {
+                            /* Between ramps, prefer higher hit (closer to player) */
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        } else if (!hit_is_ramp && best_is_flat) {
+                            /* Between flat floors, prefer higher */
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        } else if (!hit_is_ramp && best_n.y < 0.95f) {
+                            /* Flat floor vs ramp: prefer ramp if within 20 units */
+                            if (hit_y >= best_hit_y - 20.0f) better = true;
+                        }
 
-                    if (better) {
-                        best_n = n;
-                        best_hit_y = hit_y;
-                        hit_any = true;
+                        if (better) {
+                            best_n = n;
+                            best_hit_y = hit_y;
+                            best.hit = true;
+                        }
                     }
                 }
             }
         }
-    }
 
-    if (hit_any) {
-        best.hit = true;
-        best.y = best_hit_y;
-        best.normal = best_n;
+        if (best.hit && best_hit_y > best.y) {
+            best.y = best_hit_y;
+            best.normal = best_n;
+        }
     }
 
     return best;
@@ -619,7 +628,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
     (void)crouch_height;
     f32 radius = RADIO_JUGADOR;
 
-    return swept_sphere_floor_detection(map, bp, pos, radius);
+    return raycast_floor_detection(map, bp, pos, radius);
 }
 
 bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_pos, Vec3 *vel, f32 dt, f32 crouch_height, Vec3 *out_pos)
