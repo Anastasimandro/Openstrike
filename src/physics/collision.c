@@ -246,11 +246,11 @@ static inline bool triangle_is_degenerate(Vec3 v0, Vec3 v1, Vec3 v2)
 }
 
 /* Filtrar triángulos de suelo/techo durante barrido horizontal de paredes.
- * Solo filtrar superficies VERDADERAMENTE horizontales (normal.y > 0.98 o < -0.98).
- * Rampas (0.01 < normal.y < 0.98) deben colisionar como paredes para poder subirlas. */
+ * Filtrar suelos (normal.y > 0.7) y techos (normal.y < -0.7).
+ * Rampas (0.01 < normal.y < 0.7) se manejan en lógica de suelo, no en colisión de paredes. */
 static inline bool is_floor_or_ceiling(Vec3 n)
 {
-    return n.y > 0.98f || n.y < -0.98f;
+    return n.y > 0.7f || n.y < -0.7f;
 }
 
 SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
