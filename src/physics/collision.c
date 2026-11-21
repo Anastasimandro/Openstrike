@@ -489,10 +489,8 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
                         } else if (!hit_is_ramp && best_is_flat) {
                             /* Between flat floors, prefer higher */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
-                        } else if (!hit_is_ramp && best_n.y < 0.95f) {
-                            /* Flat floor vs ramp: prefer ramp if within 20 units */
-                            if (hit_y >= best_hit_y - 20.0f) better = true;
                         }
+                        /* Never prefer flat floor over ramp once a ramp is detected */
 
                         if (better) {
                             best_n = n;
@@ -600,10 +598,8 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
                         } else if (!hit_is_ramp && best_is_flat) {
                             /* Between flat floors, prefer higher */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
-                        } else if (!hit_is_ramp && best_n.y < 0.95f) {
-                            /* Flat floor vs ramp: prefer ramp if within 20 units */
-                            if (hit_y >= best_hit_y - 20.0f) better = true;
                         }
+                        /* Never prefer flat floor over ramp once a ramp is detected */
 
                         if (better) {
                             best_n = n;
