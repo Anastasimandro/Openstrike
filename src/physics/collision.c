@@ -508,8 +508,9 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
 }
 
 /* ── Raycast-based floor detection (GoldSrc style) ───────────────────────── *
- * Uses 5 rays from slightly above feet level: center + 4 corners at radius*0.7.
- * More robust than swept capsule for triangle soup maps with sloped surfaces. */
+ * Uses 5 rays from HIGH above feet level (20 units) to detect both current
+ * floor and ramps above. This solves the "ramp above flat floor" problem.
+ * Ray origin at y=20: hits ramp at y=5 (t=15) before flat floor at y=0 (t=20). */
 static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Vec3 pos, f32 radius)
 {
     FloorHit best = {0};
@@ -518,8 +519,9 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
     if (!map || !map->cargado || map->face_count == 0) return best;
 
     /* 5 ray origins: center + 4 corners of player footprint.
-     * Start slightly above feet (2 units) to avoid t=0 hits on current surface. */
-    const f32 RAY_START_OFFSET = 2.0f;
+     * Start HIGH above feet (20 units) to see ramps above current floor.
+     * Max ramp height in maps is ~18u, so 20u origin clears all ramps. */
+    const f32 RAY_START_OFFSET = 20.0f;
     f32 ray_radius = radius * 0.7f;
     Vec3 origins[5] = {
         { pos.x, pos.y + RAY_START_OFFSET, pos.z },                    // center
@@ -529,18 +531,18 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
         { pos.x, pos.y + RAY_START_OFFSET, pos.z - ray_radius }        // -z
     };
 
-    /* Max trace distance: step size + radius + offset + max ramp height (18u) */
-    f32 max_dist = SV_STEPSIZE + radius + RAY_START_OFFSET + 20.0f;
+    /* Max trace distance: origin height + step size + radius + max ramp height */
+    f32 max_dist = RAY_START_OFFSET + SV_STEPSIZE + radius + 20.0f;
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
     u32 face_count = 0;
     u16 face_indices[BP_TEMP_MAX];
 
     if (bp && bp->built) {
-        /* Broadphase AABB must cover full horizontal spread of rays AND full ramp height.
-         * Horizontal: pos ± radius. Vertical: from (pos.y - max_dist) to (pos.y + RAY_START_OFFSET + max_ramp_height). */
+        /* Broadphase AABB must cover full horizontal spread of rays AND full vertical range.
+         * Vertical: from (pos.y - max_dist) to (pos.y + RAY_START_OFFSET). */
         Vec3 mins = { pos.x - radius, pos.y - max_dist, pos.z - radius };
-        Vec3 maxs = { pos.x + radius, pos.y + RAY_START_OFFSET + 20.0f, pos.z + radius };
+        Vec3 maxs = { pos.x + radius, pos.y + RAY_START_OFFSET + 2.0f, pos.z + radius };
         face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
     } else {
         face_count = map->face_count;
