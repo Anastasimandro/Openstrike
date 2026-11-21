@@ -48,10 +48,11 @@ jobs:
         run: |
           cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-win
-      - name: Copiar SDL2.dll, SDL2_mixer.dll y assets
+      - name: Copiar SDL2.dll, SDL2_mixer.dll, libxmp.dll y assets
         run: |
           cp deps/windows/SDL2/x86_64-w64-mingw32/bin/SDL2.dll build-win/
           cp deps/windows/SDL2_mixer/x86_64-w64-mingw32/bin/SDL2_mixer.dll build-win/
+          cp deps/windows/libxmp.dll build-win/
           cp -r assets build-win/assets
       - uses: actions/upload-artifact@v4
         with:

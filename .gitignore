@@ -1,0 +1,30 @@
+# Build artifacts
+build/
+build-win/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Dependencies (except committed DLLs)
+deps/windows/mingw64/
+deps/windows/zstd*
+deps/windows/*.tar*
+deps/windows/*.zip
+deps/windows/.BUILDINFO
+deps/windows/.MTREE
+deps/windows/.PKGINFO
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test artifacts
+*.log
+physics_log.txt

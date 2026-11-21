@@ -276,6 +276,7 @@ int main(int argc, char *argv[])
         render((f32)(accumulator / TICK_MS));
     }
 
+    phys_log_shutdown();
     audio_shutdown();
     texturas_shutdown();
     renderer_shutdown();
