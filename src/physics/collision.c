@@ -473,13 +473,17 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
                         if (!hit_any) {
                             better = true;
                         } else if (hit_is_ramp && best_is_flat) {
-                            if (hit_y >= best_hit_y - 10.0f) better = true;
+                            /* Strongly prefer ramps over flat floor when approaching */
+                            if (hit_y >= best_hit_y - 20.0f) better = true;
                         } else if (hit_is_ramp && best_n.y < 0.95f) {
+                            /* Between ramps, prefer higher hit (closer to player) */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
                         } else if (!hit_is_ramp && best_is_flat) {
+                            /* Between flat floors, prefer higher */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
                         } else if (!hit_is_ramp && best_n.y < 0.95f) {
-                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                            /* Flat floor vs ramp: prefer ramp if within 20 units */
+                            if (hit_y >= best_hit_y - 20.0f) better = true;
                         }
 
                         if (better) {
@@ -568,13 +572,17 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
                         if (!best.hit) {
                             better = true;
                         } else if (hit_is_ramp && best_is_flat) {
-                            if (hit_y >= best_hit_y - 10.0f) better = true;
+                            /* Strongly prefer ramps over flat floor when approaching */
+                            if (hit_y >= best_hit_y - 20.0f) better = true;
                         } else if (hit_is_ramp && best_n.y < 0.95f) {
+                            /* Between ramps, prefer higher hit (closer to player) */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
                         } else if (!hit_is_ramp && best_is_flat) {
+                            /* Between flat floors, prefer higher */
                             if (hit_y > best_hit_y + 1e-4f) better = true;
                         } else if (!hit_is_ramp && best_n.y < 0.95f) {
-                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                            /* Flat floor vs ramp: prefer ramp if within 20 units */
+                            if (hit_y >= best_hit_y - 20.0f) better = true;
                         }
 
                         if (better) {
