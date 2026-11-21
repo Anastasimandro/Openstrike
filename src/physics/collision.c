@@ -530,10 +530,10 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
     if (hit.hit) {
-        /* hit.pos is capsule center at impact.
-         * Floor y = capsule bottom at impact = hit.pos.y - half_height - radius */
+        /* hit.pos is PLAYER FEET position at impact (start + t*(end-start)).
+         * Floor y = hit.pos.y (feet on floor). */
         result.hit = true;
-        result.y = hit.pos.y - half_height - radius;
+        result.y = hit.pos.y;
         result.normal = hit.normal;
     }
 
