@@ -526,9 +526,7 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
     if (!map || !map->cargado || map->face_count == 0) return best;
 
     const f32 RAY_START_OFFSET = 20.0f;
-    /* Use larger ray radius (2x player radius) so rays sample further out,   *
-     * hitting ramps at x positions where raycast works reliably (~x=200).   */
-    f32 ray_radius = radius * 2.0f;  /* 32 units */
+    f32 ray_radius = radius * 0.7f;  /* ~11 units, good balance */
     Vec3 origins[5] = {
         { pos.x, pos.y + RAY_START_OFFSET, pos.z },
         { pos.x + ray_radius, pos.y + RAY_START_OFFSET, pos.z },
