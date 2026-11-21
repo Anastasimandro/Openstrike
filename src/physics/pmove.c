@@ -324,18 +324,25 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         if (!walking_up) {
             /* Solo aplicar componente horizontal de la gravedad tangencial.
              * La componente vertical la maneja el snap al suelo (vel.y = 0).
-             * FIX: asegurar que el componente horizontal tire HACIA ABAJO
-             * (disminuya Y), no hacia arriba de la rampa. */
+             * FIX: asegurar que el componente horizontal SIEMPRE tire HACIA ABAJO
+             * de la rampa (disminuya Y). La normal de colisión puede tener el
+             * componente horizontal invertido (winding incorrecto en el mapa).
+             * Usamos la pendiente de la rampa (-nx/ny) para determinar la dirección
+             * correcta: si -nx/ny > 0 la rampa sube en +X, por lo que ABAJO es -X. */
             Vec3 gt_horiz = { gt.x, 0.0f, gt.z };
             if (ramp_normal_for_gravity.y > 0.001f) {
-                /* Cambio esperado en Y por moverse en dirección gt_horiz:
-                 * dy = -(nx * vx + nz * vz) / ny  (para ny > 0) */
-                f32 expected_dy = -(ramp_normal_for_gravity.x * gt_horiz.x +
-                                    ramp_normal_for_gravity.z * gt_horiz.z) /
-                                    ramp_normal_for_gravity.y;
-                if (expected_dy > 0.0f) {
-                    /* Esto subiría la rampa → invertir componente horizontal */
+                /* Pendiente en X: dy/dx = -nx/ny. Si >0, la rampa sube en +X. */
+                f32 slope_x = -ramp_normal_for_gravity.x / ramp_normal_for_gravity.y;
+                /* ABAJO en la rampa es dirección opuesta a la pendiente:
+                 * si slope_x > 0 (sube en +X), abajo es -X → gt_horiz.x debe ser < 0 */
+                if ((slope_x > 0.0f && gt_horiz.x > 0.0f) ||
+                    (slope_x < 0.0f && gt_horiz.x < 0.0f)) {
                     gt_horiz.x = -gt_horiz.x;
+                }
+                /* Mismo razonamiento para Z */
+                f32 slope_z = -ramp_normal_for_gravity.z / ramp_normal_for_gravity.y;
+                if ((slope_z > 0.0f && gt_horiz.z > 0.0f) ||
+                    (slope_z < 0.0f && gt_horiz.z < 0.0f)) {
                     gt_horiz.z = -gt_horiz.z;
                 }
             }
