@@ -306,8 +306,9 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
         if (fabsf(ny) > 1e-4f) {
             f32 ramp_y_at_player = fh_predictive.y - (nx * (p->pos.x - next_pos.x) + nz * (p->pos.z - next_pos.z)) / ny;
-            /* Solo usar si la rampa está a nuestra altura o por encima */
-            if (ramp_y_at_player >= p->pos.y - 1.0f) {
+            /* Solo usar si la rampa está a la altura del suelo plano o por encima.
+         * fh.y es la altura del suelo plano detectado (0 en sala_prueba). */
+            if (ramp_y_at_player >= fh.y - 1.0f) {
                 fh.y = ramp_y_at_player;
             }
         }
