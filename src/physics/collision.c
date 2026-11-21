@@ -476,12 +476,21 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
                     bool better = false;
                     if (!hit_any) {
                         better = true;
-                    } else if (fabsf(hit_y - best_y) <= 1.0f) {
-                        /* Tie-breaker: prefer steeper slopes (lower normal.y) at same height */
-                        if (n.y < best_normal->y - 1e-4f) better = true;
-                    } else if (hit_y > best_y + 1e-4f) {
-                        /* Prefer higher hit (closer to start) */
-                        better = true;
+                    } else {
+                        bool hit_is_ramp = n.y < 0.95f;
+                        bool best_is_flat = best_normal->y > 0.95f;
+                        /* Strongly prefer ramps over flat floors:
+                         * - If hit is ramp and best is flat, prefer ramp even if up to 10 units lower
+                         * - If both same type, prefer higher hit_y */
+                        if (hit_is_ramp && best_is_flat) {
+                            if (hit_y >= best_y - 10.0f) better = true;
+                        } else if (!hit_is_ramp && !best_is_flat) {
+                            if (hit_y > best_y + 1e-4f) better = true;
+                        } else if (hit_is_ramp && best_is_ramp) {
+                            if (hit_y > best_y + 1e-4f) better = true;
+                        } else if (!hit_is_ramp && best_is_flat) {
+                            if (hit_y > best_y + 1e-4f) better = true;
+                        }
                     }
                     if (better) {
                         *best_t = t;
