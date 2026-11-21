@@ -482,13 +482,15 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
     f32 max_dist = RAY_START_OFFSET + 20.0f + radius;  /* 20 + 20 + 16 = 56 */
 
     /* Broadphase query covering FULL vertical range at lookahead position.
-     * This ensures ramp triangles are found even at cell boundaries. */
+     * This ensures ramp triangles are found even at cell boundaries.
+     * Use wider horizontal query radius (2x player radius) to catch wide ramps. */
+    const f32 QUERY_RADIUS = radius * 2.0f;  /* 32 units */
     u32 face_count = 0;
     u16 face_indices[BP_TEMP_MAX];
 
     if (bp && bp->built) {
-        Vec3 mins = { lookahead_x - radius, pos.y - max_dist, lookahead_z - radius };
-        Vec3 maxs = { lookahead_x + radius, pos.y + RAY_START_OFFSET + 2.0f, lookahead_z + radius };
+        Vec3 mins = { lookahead_x - QUERY_RADIUS, pos.y - max_dist, lookahead_z - QUERY_RADIUS };
+        Vec3 maxs = { lookahead_x + QUERY_RADIUS, pos.y + RAY_START_OFFSET + 2.0f, lookahead_z + QUERY_RADIUS };
         face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
     } else {
         face_count = map->face_count;
@@ -586,12 +588,16 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
     f32 max_dist = RAY_START_OFFSET + SV_STEPSIZE + radius + 20.0f;
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
+    /* Use wider horizontal query radius (2x player radius) to catch ramp triangles
+     * that extend beyond the player's immediate footprint (e.g., wide ramps). */
+    const f32 QUERY_RADIUS = radius * 2.0f;  /* 32 units */
+
     u32 face_count = 0;
     u16 face_indices[BP_TEMP_MAX];
 
     if (bp && bp->built) {
-        Vec3 mins = { pos.x - radius, pos.y - max_dist, pos.z - radius };
-        Vec3 maxs = { pos.x + radius, pos.y + RAY_START_OFFSET + 2.0f, pos.z + radius };
+        Vec3 mins = { pos.x - QUERY_RADIUS, pos.y - max_dist, pos.z - QUERY_RADIUS };
+        Vec3 maxs = { pos.x + QUERY_RADIUS, pos.y + RAY_START_OFFSET + 2.0f, pos.z + QUERY_RADIUS };
         face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
     } else {
         face_count = map->face_count;
