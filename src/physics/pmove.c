@@ -240,7 +240,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     Vec3 ramp_normal = normal_suelo_antes;
     bool on_ramp = en_suelo_antes && ramp_normal.y < 0.95f && ramp_normal.y > 0.001f;
     FloorHit fh_predictive = {0};
-    Vec3 next_pos = p->pos;  // posición predictiva para usar en override
+    Vec3 next_pos = p->pos;
 
     if (en_suelo_antes && tiene_wish) {
         f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
@@ -292,49 +292,57 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Detectar suelo real contra geometría del mapa ──────────────────── */
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
-    /* Override: si el check predictivo detectó rampa pero el floor detection
-     * devuelve suelo plano (transición flat→rampa), usar normal de rampa
-     * y calcular la altura de la rampa en la posición ACTUAL del jugador
-     * usando el plano de la rampa detectada predictivamente.
-     * Solo aplicar si la altura calculada está POR ENCIMA de la posición
-     * actual del jugador (significa que ya estamos sobre la rampa). */
-    if (on_ramp && fh.hit && fh.normal.y > 0.99f && ramp_normal.y < 0.99f && fh_predictive.hit) {
-        fh.normal = ramp_normal;
+    /* ── Override predictivo para transición flat→rampa ────────────────── *
+     * Si el check predictivo detectó rampa, calcular la altura de la rampa *
+     * en la posición ACTUAL del jugador usando el plano de la rampa.       *
+     * Solo aplicar si la altura calculada está a nivel o por encima del    *
+     * suelo plano detectado (fh.y), indicando que ya estamos sobre la rampa. */
+    bool predictive_ramp_valid = false;
+    f32 predictive_ramp_y = fh.y;
+    Vec3 predictive_ramp_normal = fh.normal;
+
+    if (on_ramp && fh_predictive.hit && ramp_normal.y < 0.99f) {
         /* Calcular altura de rampa en posición actual del jugador:
          * Plano: n · (X - P) = 0  =>  Y = Py - (nx*(X-Px) + nz*(Z-Pz)) / ny
          * P = posición predictiva (next_pos) con altura fh_predictive.y */
         f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
         if (fabsf(ny) > 1e-4f) {
             f32 ramp_y_at_player = fh_predictive.y - (nx * (p->pos.x - next_pos.x) + nz * (p->pos.z - next_pos.z)) / ny;
-            /* Solo usar si la rampa está a la altura del suelo plano o por encima.
-         * fh.y es la altura del suelo plano detectado (0 en sala_prueba). */
+            /* Solo usar si la rampa está a la altura del suelo plano o por encima */
             if (ramp_y_at_player >= fh.y - 1.0f) {
-                fh.y = ramp_y_at_player;
+                predictive_ramp_valid = true;
+                predictive_ramp_y = ramp_y_at_player;
+                predictive_ramp_normal = ramp_normal;
             }
         }
     }
+
+    /* Usar datos predictivos si son válidos, si no, usar floor detection real */
+    f32 floor_y = predictive_ramp_valid ? predictive_ramp_y : fh.y;
+    Vec3 floor_normal = predictive_ramp_valid ? predictive_ramp_normal : fh.normal;
+    bool floor_hit = predictive_ramp_valid || fh.hit;
 
     /* Snap al suelo: en rampa permitir snap aunque el jugador esté ligeramente *
      * por encima (la proyección de wish_dir puede haberlo levantado).         *
      * Condición: hit, player dentro de SV_STEPSIZE del suelo, y moviéndose    *
      * hacia el suelo (o paralelo en rampa).                                   */
     bool moving_into_floor = (p->vel.y <= 0.0f);
-    if (fh.hit && fh.normal.y < 0.95f) {
-        f32 vn = vec3_dot(p->vel, fh.normal);
+    if (floor_hit && floor_normal.y < 0.95f) {
+        f32 vn = vec3_dot(p->vel, floor_normal);
         moving_into_floor = (vn <= 0.05f);  // tolerancia más generosa en rampa
     }
 
-    if (fh.hit && p->pos.y <= fh.y + SV_STEPSIZE && moving_into_floor) {
-        p->pos.y    = fh.y;
+    if (floor_hit && p->pos.y <= floor_y + SV_STEPSIZE && moving_into_floor) {
+        p->pos.y    = floor_y;
         p->vel.y    = 0.0f;
         p->en_suelo = true;
 
         /* ── Suelo pendiente: manejar fricción/quieto en rampa ─────────── */
-        if (fh.normal.y < 0.95f) {
+        if (floor_normal.y < 0.95f) {
             /* Re-proyectar wish_dir al plano de la rampa actual */
             Vec3 wish_ramp = wish_dir;
             if (tiene_wish) {
-                wish_ramp = vec3_project_on_plane(wish_dir, fh.normal);
+                wish_ramp = vec3_project_on_plane(wish_dir, floor_normal);
                 wish_ramp.y = 0.0f;
                 f32 len = sqrtf(wish_ramp.x * wish_ramp.x + wish_ramp.z * wish_ramp.z);
                 if (len > 0.001f) {
@@ -347,7 +355,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
             /* SIEMPRE aplicar gravedad tangencial en rampa (componente de gravedad paralela al plano) *
              * Esto acelera cuesta abajo y frena cuesta arriba, independientemente del input.        */
-            Vec3 gt = gravity_tangent(fh.normal);
+            Vec3 gt = gravity_tangent(floor_normal);
             p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
 
             if (tiene_wish) {
@@ -357,14 +365,14 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
             }
 
             /* Clip velocidad al plano del suelo (eliminar componente normal) */
-            if (fh.normal.y > 0.001f) {
-                f32 vn = vec3_dot(p->vel, fh.normal);
+            if (floor_normal.y > 0.001f) {
+                f32 vn = vec3_dot(p->vel, floor_normal);
                 if (vn < 0.0f) {
-                    p->vel = vec3_sub(p->vel, vec3_scale(fh.normal, vn));
+                    p->vel = vec3_sub(p->vel, vec3_scale(floor_normal, vn));
                 }
             }
 
-            p->pos.y = fh.y;
+            p->pos.y = floor_y;
 
             if (p->jump_buffer_ticks > 0) {
                 p->vel.y             = JUMP_IMPULSE;
