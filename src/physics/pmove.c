@@ -240,10 +240,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     Vec3 ramp_normal = normal_suelo_antes;
     bool on_ramp = en_suelo_antes && ramp_normal.y < 0.95f && ramp_normal.y > 0.001f;
     FloorHit fh_predictive = {0};
+    Vec3 next_pos = p->pos;  // posición predictiva para usar en override
 
     if (en_suelo_antes && tiene_wish) {
         f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
-        Vec3 next_pos = { p->pos.x + wish_dir.x * lookahead, p->pos.y, p->pos.z + wish_dir.z * lookahead };
+        next_pos = (Vec3){ p->pos.x + wish_dir.x * lookahead, p->pos.y, p->pos.z + wish_dir.z * lookahead };
         fh_predictive = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
         if (fh_predictive.hit && fh_predictive.normal.y < 0.95f && fh_predictive.normal.y > 0.001f) {
             ramp_normal = fh_predictive.normal;
@@ -298,10 +299,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     if (on_ramp && fh.hit && fh.normal.y > 0.99f && ramp_normal.y < 0.99f && fh_predictive.hit) {
         fh.normal = ramp_normal;
         /* Calcular altura de rampa en posición actual del jugador:
-         * Plano: n · (X - P) = 0  =>  Y = Py - (nx*(X-Px) + nz*(Z-Pz)) / ny */
+         * Plano: n · (X - P) = 0  =>  Y = Py - (nx*(X-Px) + nz*(Z-Pz)) / ny
+         * P = posición predictiva (next_pos) con altura fh_predictive.y */
         f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
         if (fabsf(ny) > 1e-4f) {
-            fh.y = fh_predictive.y - (nx * (p->pos.x - fh_predictive.pos.x) + nz * (p->pos.z - fh_predictive.pos.z)) / ny;
+            fh.y = fh_predictive.y - (nx * (p->pos.x - next_pos.x) + nz * (p->pos.z - next_pos.z)) / ny;
         }
     }
 
@@ -322,8 +324,6 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
         /* ── Suelo pendiente: manejar fricción/quieto en rampa ─────────── */
         if (fh.normal.y < 0.95f) {
-            f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
-
             /* Re-proyectar wish_dir al plano de la rampa actual */
             Vec3 wish_ramp = wish_dir;
             if (tiene_wish) {
