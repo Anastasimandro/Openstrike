@@ -281,15 +281,15 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
     u16 *face_indices = NULL;
 
     if (bp && bp->built) {
-        f32 capsule_total_h = 2.0f * half_height + 2.0f * radius;
+        f32 capsule_half_h = half_height + radius;  // center to top/bottom of capsule
         Vec3 mins = {
             fminf(start.x, end.x) - radius,
-            fminf(start.y, end.y) - radius,
+            fminf(start.y, end.y) - capsule_half_h,
             fminf(start.z, end.z) - radius
         };
         Vec3 maxs = {
             fmaxf(start.x, end.x) + radius,
-            fmaxf(start.y, end.y) + capsule_total_h + radius,
+            fmaxf(start.y, end.y) + capsule_half_h,
             fmaxf(start.z, end.z) + radius
         };
         face_count = broadphase_query_aabb(bp, mins, maxs, g_bp_temp, BP_TEMP_MAX);
