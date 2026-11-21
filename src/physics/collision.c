@@ -513,13 +513,13 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (!map || !map->cargado || map->face_count == 0) return result;
 
-    /* GoldSrc-style: SINGLE raycast from player center (not 5-ray fan).
-     * The 5-ray fan picks the HIGHEST point under footprint, which on a ramp
-     * is UP the slope, causing player to snap UP instead of down.
-     * Use center ray only for floor height/normal. Step-up uses swept capsule. */
+    /* GoldSrc-style: raycast from FEET level (pos.y + radius) down short distance.
+     * Starts at player's feet (not capsule top) to avoid hitting flat floor
+     * that extends UNDER ramps in triangle soup maps.
+     * Trace distance = SV_STEPSIZE + 2 (just enough for step-up detection). */
     f32 radius = RADIO_JUGADOR;
-    f32 trace_dist = crouch_height + SV_STEPSIZE;  // cover from capsule top down to feet - step
-    f32 start_y = pos.y + crouch_height;  // top of capsule
+    f32 trace_dist = SV_STEPSIZE + 2.0f;  // ~20 units down from feet
+    f32 start_y = pos.y + radius;  // feet level
 
     Vec3 start = { pos.x, start_y, pos.z };
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
@@ -528,11 +528,11 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
     Vec3 best_normal = { 0.0f, 1.0f, 0.0f };
     bool hit_any = false;
 
-    /* Broadphase query for center ray AABB */
+    /* Broadphase query for center ray AABB (tight around feet) */
     u32 face_count = 0;
     u16 *face_indices = NULL;
     if (bp && bp->built) {
-        Vec3 mins = { pos.x - radius, pos.y - SV_STEPSIZE - radius, pos.z - radius };
+        Vec3 mins = { pos.x - radius, pos.y - trace_dist - radius, pos.z - radius };
         Vec3 maxs = { pos.x + radius, start_y + radius, pos.z + radius };
         face_count = broadphase_query_aabb(bp, mins, maxs, g_bp_temp, BP_TEMP_MAX);
         face_indices = g_bp_temp;
