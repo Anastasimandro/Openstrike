@@ -476,7 +476,7 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
                         better = true;
                     } else if (fabsf(hit_y - best_y) <= 1.0f) {
                         /* Tie-breaker: prefer steeper slopes (lower normal.y) at same height */
-                        if (n.y < *best_normal - 1e-4f) better = true;
+                        if (n.y < best_normal->y - 1e-4f) better = true;
                     } else if (hit_y > best_y + 1e-4f) {
                         /* Prefer higher hit (closer to start) */
                         better = true;
