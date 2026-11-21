@@ -599,7 +599,6 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
 
     for (int o = 0; o < 5; o++) {
         Vec3 origin = origins[o];
-        f32 best_t = max_dist + 1e-4f;
         Vec3 best_n = { 0.0f, 1.0f, 0.0f };
         f32 best_hit_y = -1e9f;
 
@@ -644,7 +643,6 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
                         }
 
                         if (better) {
-                            best_t = t;
                             best_n = n;
                             best_hit_y = hit_y;
                             best.hit = true;

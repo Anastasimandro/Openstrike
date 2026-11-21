@@ -27,6 +27,11 @@
  * Definido aquí para evitar dependencia circular con pmove.h. */
 #define SV_STEPSIZE 18.0f
 
+/* Alturas de agachado (definidas aquí para que collision.c pueda usarlas
+ * sin incluir pmove.h y crear dependencia circular). */
+#define CROUCH_HEIGHT_STAND  72.0f
+#define CROUCH_HEIGHT_DUCK   36.0f
+
 /* Radio del jugador (cápsula aproximada) para el bloqueo de paredes */
 #define RADIO_JUGADOR 16.0f
 
