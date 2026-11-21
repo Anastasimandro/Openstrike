@@ -465,7 +465,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
         face_indices = NULL;
     }
 
-    f32 best_t = 1.0f + 1e-4f;
+    f32 best_t = trace_dist + 2.0f + 1e-4f;  // max distance along dir (unnormalized)
     Vec3 best_normal = { 0.0f, 1.0f, 0.0f };
     bool hit_any = false;
 
@@ -491,7 +491,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
             f32 t;
             Vec3 n;
             if (collision_ray_triangulo(start, dir, v0, v1, v2, &t, &n)) {
-                if (t >= 0.0f && t <= 1.0f && t < best_t && n.y > SUELO_NORMAL_Y_MIN) {
+                if (t >= 0.0f && t < best_t && n.y > SUELO_NORMAL_Y_MIN) {
                     best_t = t;
                     best_normal = n;
                     hit_any = true;
@@ -502,7 +502,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
     if (hit_any) {
         result.hit = true;
-        result.y = start.y - best_t * (trace_dist + 2.0f);  // punto de impacto en Y
+        result.y = start.y - best_t;  // dir = (0, -1, 0), so best_t = Y distance
         result.normal = best_normal;
     }
 
