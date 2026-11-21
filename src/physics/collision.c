@@ -412,9 +412,8 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
     return best;
 }
 
-/* Predictive ramp detection using swept capsule (more reliable than raycast
- * for detecting ramps at lookahead positions).
- * Sweeps capsule DOWN from HIGH above (20u) at lookahead position.
+/* Predictive ramp detection using raycast down from high above (GoldSrc style).
+ * Uses 5-ray fan at lookahead position with full vertical range broadphase query.
  * Returns true if ramp detected, fills out_normal with ramp normal,
  * and out_hit_y with floor y at lookahead position. */
 bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
@@ -429,133 +428,95 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
     f32 lookahead_x = pos.x + wish_dir.x * lookahead;
     f32 lookahead_z = pos.z + wish_dir.z * lookahead;
 
-    /* Sweep capsule from high above (20u) down to -20u at lookahead position.
-     * Use full capsule height (stand: 72u) to match player collision. */
-    f32 capsule_h = CROUCH_HEIGHT_STAND - 2.0f * radius;  /* 72 - 32 = 40 */
-    f32 half_height = capsule_h * 0.5f;  /* 20 */
+    /* Raycast from 20u above player down to -20u (covers max ramp height 18 + margin) */
+    const f32 RAY_START_OFFSET = 20.0f;
+    f32 ray_radius = radius * 0.7f;
+    Vec3 origins[5] = {
+        { lookahead_x, pos.y + RAY_START_OFFSET, lookahead_z },
+        { lookahead_x + ray_radius, pos.y + RAY_START_OFFSET, lookahead_z },
+        { lookahead_x - ray_radius, pos.y + RAY_START_OFFSET, lookahead_z },
+        { lookahead_x, pos.y + RAY_START_OFFSET, lookahead_z + ray_radius },
+        { lookahead_x, pos.y + RAY_START_OFFSET, lookahead_z - ray_radius }
+    };
 
-    Vec3 start = { lookahead_x, pos.y + 20.0f + half_height + radius, lookahead_z };  /* top of capsule at y=20+20+16=56 */
-    Vec3 end   = { lookahead_x, pos.y - 20.0f, lookahead_z };  /* bottom at y=-20 */
+    Vec3 dir = { 0.0f, -1.0f, 0.0f };
+    f32 max_dist = RAY_START_OFFSET + 20.0f + radius;  /* 20 + 20 + 16 = 56 */
 
-    /* Broadphase query covering FULL sweep volume at lookahead position.
-     * Expand horizontally by radius to catch ramp triangles in adjacent cells. */
+    /* Broadphase query covering FULL vertical range at lookahead position.
+     * This ensures ramp triangles are found even at cell boundaries. */
     u32 face_count = 0;
     u16 face_indices[BP_TEMP_MAX];
 
     if (bp && bp->built) {
-        f32 capsule_total_h = 2.0f * half_height + 2.0f * radius;
-        Vec3 mins = {
-            lookahead_x - radius,
-            fminf(start.y, end.y) - radius,
-            lookahead_z - radius
-        };
-        Vec3 maxs = {
-            lookahead_x + radius,
-            fmaxf(start.y, end.y) + capsule_total_h + radius,
-            lookahead_z + radius
-        };
+        Vec3 mins = { lookahead_x - radius, pos.y - max_dist, lookahead_z - radius };
+        Vec3 maxs = { lookahead_x + radius, pos.y + RAY_START_OFFSET + 2.0f, lookahead_z + radius };
         face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
     } else {
         face_count = map->face_count;
     }
 
-    SweepHit best = {0};
-    best.t = 1.0f + 1e-4f;
+    f32 best_hit_y = -1e9f;
+    Vec3 best_n = { 0.0f, 1.0f, 0.0f };
+    bool hit_any = false;
 
-    for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
-        u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
-        if (fi >= (u32)map->face_count) continue;
+    for (int o = 0; o < 5; o++) {
+        Vec3 origin = origins[o];
 
-        const MapFace *face = &map->faces[fi];
-        u32 base = face->vertex_start;
-        u32 count = face->vertex_count;
+        for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
+            u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
+            if (fi >= (u32)map->face_count) continue;
 
-        for (u32 ti = 0; ti + 2 < count; ti += 3) {
-            const MapVertex *va = &map->vertices[base + ti + 0];
-            const MapVertex *vb = &map->vertices[base + ti + 1];
-            const MapVertex *vc = &map->vertices[base + ti + 2];
+            const MapFace *face = &map->faces[fi];
+            u32 base = face->vertex_start;
+            u32 count = face->vertex_count;
 
-            Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
-            Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
-            Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+            for (u32 ti = 0; ti + 2 < count; ti += 3) {
+                const MapVertex *va = &map->vertices[base + ti + 0];
+                const MapVertex *vb = &map->vertices[base + ti + 1];
+                const MapVertex *vc = &map->vertices[base + ti + 2];
 
-            if (triangle_is_degenerate(v0, v1, v2)) continue;
+                Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
+                Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
+                Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
 
-            Vec3 e1 = vec3_sub(v1, v0);
-            Vec3 e2 = vec3_sub(v2, v0);
-            Vec3 n = vec3_norm(vec3_cross(e1, e2));
+                if (triangle_is_degenerate(v0, v1, v2)) continue;
 
-            /* Only consider floor-like surfaces (not walls/ceilings) */
-            if (n.y <= SUELO_NORMAL_Y_MIN) continue;
+                f32 t;
+                Vec3 n;
+                if (collision_ray_triangulo(origin, dir, v0, v1, v2, &t, &n)) {
+                    if (t >= 1e-4f && t <= max_dist && n.y > SUELO_NORMAL_Y_MIN) {
+                        f32 hit_y = origin.y - t;
+                        /* Prefer ramps (n.y < 0.95) over flat floor */
+                        bool better = false;
+                        bool hit_is_ramp = n.y < 0.95f;
+                        bool best_is_flat = best_n.y > 0.95f;
 
-            f32 t;
+                        if (!hit_any) {
+                            better = true;
+                        } else if (hit_is_ramp && best_is_flat) {
+                            if (hit_y >= best_hit_y - 10.0f) better = true;
+                        } else if (hit_is_ramp && best_n.y < 0.95f) {
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        } else if (!hit_is_ramp && best_is_flat) {
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        } else if (!hit_is_ramp && best_n.y < 0.95f) {
+                            if (hit_y > best_hit_y + 1e-4f) better = true;
+                        }
 
-            /* Test swept capsule: sphere bottom + cylinder + sphere top */
-            Vec3 up = { 0.0f, 1.0f, 0.0f };
-            Vec3 cyl_start = vec3_add(start, vec3_scale(up, half_height));
-            Vec3 cyl_end   = vec3_add(end,   vec3_scale(up, half_height));
-            Vec3 sph_bot_start = vec3_add(start, vec3_scale(up, radius));
-            Vec3 sph_bot_end   = vec3_add(end,   vec3_scale(up, radius));
-            Vec3 sph_top_start = vec3_add(start, vec3_scale(up, half_height + radius));
-            Vec3 sph_top_end   = vec3_add(end,   vec3_scale(up, half_height + radius));
-
-            bool hit = false;
-            f32 hit_t = 1.0f + 1e-4f;
-            Vec3 hit_n = n;
-
-            /* 1. Bottom sphere */
-            if (sweep_sphere_tri(sph_bot_start, sph_bot_end, radius, v0, v1, v2, &t, &hit_n)) {
-                hit = true;
-                hit_t = t;
-            }
-            /* 2. Cylinder */
-            if (sweep_cylinder_tri(cyl_start, cyl_end, radius, half_height, v0, v1, v2, &t, &hit_n)) {
-                if (!hit || t < hit_t) {
-                    hit = true;
-                    hit_t = t;
-                }
-            }
-            /* 3. Top sphere */
-            if (sweep_sphere_tri(sph_top_start, sph_top_end, radius, v0, v1, v2, &t, &hit_n)) {
-                if (!hit || t < hit_t) {
-                    hit = true;
-                    hit_t = t;
-                }
-            }
-
-            if (hit) {
-                /* For downward sweep, prefer ramps (n.y < 0.95) over flat floor,
-                 * and prefer higher hit_y (closer to player). */
-                Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), hit_t));
-                bool better = false;
-                bool hit_is_ramp = hit_n.y < 0.95f;
-                bool best_is_flat = best.hit && best.normal.y > 0.95f;
-
-                if (!best.hit) {
-                    better = true;
-                } else if (hit_is_ramp && best_is_flat) {
-                    if (hit_pos.y >= best.pos.y - 10.0f) better = true;
-                } else if (hit_is_ramp && best.normal.y < 0.95f) {
-                    if (hit_pos.y > best.pos.y + 1e-4f) better = true;
-                } else if (!hit_is_ramp && best_is_flat) {
-                    if (hit_pos.y > best.pos.y + 1e-4f) better = true;
-                } else if (!hit_is_ramp && best.normal.y < 0.95f) {
-                    if (hit_pos.y > best.pos.y + 1e-4f) better = true;
-                }
-
-                if (better) {
-                    best.hit = true;
-                    best.t = hit_t;
-                    best.normal = hit_n;
-                    best.pos = hit_pos;
+                        if (better) {
+                            best_n = n;
+                            best_hit_y = hit_y;
+                            hit_any = true;
+                        }
+                    }
                 }
             }
         }
     }
 
-    if (best.hit && best.normal.y < 0.95f) {
-        if (out_normal) *out_normal = best.normal;
-        if (out_hit_y) *out_hit_y = best.pos.y;
+    if (hit_any && best_n.y < 0.95f) {
+        if (out_normal) *out_normal = best_n;
+        if (out_hit_y) *out_hit_y = best_hit_y;
         return true;
     }
 
