@@ -313,8 +313,9 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     /* ── Predictive override para snap ──────────────────────────────────── *
      * Si detectamos rampa adelante, usar su altura/normal en lugar del      *
-     * raycast (que puede pegar al suelo plano DEBAJO de la rampa).         */
-    bool use_predictive_snap = false;
+     * raycast (que puede pegar al suelo plano DEBAJO de la rampa).         *
+     * Aplicar cuando la rampa esté POR ENCIMA del suelo detectado en la     *
+     * posición actual del jugador.                                         */
     f32 floor_y = fh.y;
     Vec3 floor_normal = fh.normal;
     bool floor_hit = fh.hit;
@@ -324,8 +325,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         if (fabsf(n.y) > 1e-4f) {
             /* Calcular altura de la rampa en posición actual del jugador */
             f32 ramp_y_at_player = fh_ramp_at_next.y - (n.x * (p->pos.x - next_pos.x) + n.z * (p->pos.z - next_pos.z)) / n.y;
-            if (ramp_y_at_player > fh.y + 0.5f) {  // rampa significativamente por encima
-                use_predictive_snap = true;
+            if (ramp_y_at_player > fh.y) {  // rampa por encima del suelo plano
                 floor_y = ramp_y_at_player;
                 floor_normal = n;
                 floor_hit = true;
