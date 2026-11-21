@@ -518,9 +518,9 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
 }
 
 /* ── Raycast-based floor detection (GoldSrc style) ───────────────────────── *
- * Uses 5 rays from HIGH above feet level (20 units) to detect both current
+ * Uses 5 rays from HIGH above feet level (40 units) to detect both current
  * floor and ramps above. This solves the "ramp above flat floor" problem.
- * Ray origin at y=20: hits ramp at y=5 (t=15) before flat floor at y=0 (t=20). */
+ * Ray origin at y=40: hits ramp at y=5 (t=35) before flat floor at y=0 (t=40). */
 static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Vec3 pos, f32 radius)
 {
     FloorHit best = {0};
@@ -528,7 +528,7 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
 
     if (!map || !map->cargado || map->face_count == 0) return best;
 
-    const f32 RAY_START_OFFSET = 20.0f;
+    const f32 RAY_START_OFFSET = 40.0f;
     /* Use 1x player radius (16) so side rays reach further out, catching ramps *
      * when approaching from flat floor (ramp starts at x=180, player at x=170). */
     f32 ray_radius = radius * 1.0f;  /* 16 units */
