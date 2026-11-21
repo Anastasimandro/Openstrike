@@ -665,10 +665,20 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
         Vec3 new_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), move_t));
 
         Vec3 remaining_vel = vec3_scale(vec3_sub(end, start), 1.0f - hit.t);
-        f32 into = vec3_dot(remaining_vel, hit.normal);
-        if (into < 0.0f) {
-            remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
+        /* Wall collision: slide horizontally only. Project remaining velocity
+         * onto horizontal plane (zero Y) to avoid gaining Y from ramp hits.
+         * Vertical position is handled by floor snap separately. */
+        Vec3 horiz_normal = { hit.normal.x, 0.0f, hit.normal.z };
+        f32 horiz_len = vec3_len(horiz_normal);
+        if (horiz_len > 1e-4f) {
+            horiz_normal = vec3_scale(horiz_normal, 1.0f / horiz_len);
+            f32 into = vec3_dot(remaining_vel, horiz_normal);
+            if (into < 0.0f) {
+                remaining_vel = vec3_sub(remaining_vel, vec3_scale(horiz_normal, into));
+            }
         }
+        /* Preserve original vertical velocity for gravity/jump handling */
+        remaining_vel.y = vel->y;
 
         start = new_pos;
         end = vec3_add(start, remaining_vel);
