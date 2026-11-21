@@ -540,9 +540,10 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
     f32 max_dist = RAY_START_OFFSET + SV_STEPSIZE + radius + 20.0f;
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
-    /* Use wider horizontal query radius (2x player radius) to catch ramp triangles
-     * that extend beyond the player's immediate footprint (e.g., wide ramps). */
-    const f32 QUERY_RADIUS = radius * 2.0f;  /* 32 units */
+    /* Use wider horizontal query radius (3x player radius = 48) to catch ramp triangles
+     * that extend beyond the player's immediate footprint (e.g., wide ramps up to 80 units wide).
+     * The test ramp spans z=[-40, 40], so at lookahead_z=0 we need radius >= 40 to include edges. */
+    const f32 QUERY_RADIUS = radius * 3.0f;  /* 48 units */
 
     u32 face_count = 0;
     u16 face_indices[BP_TEMP_MAX];
