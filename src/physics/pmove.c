@@ -348,17 +348,29 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 predicted_next.x += wish_dir.x * wish_speed * dt;
                 predicted_next.z += wish_dir.z * wish_speed * dt;
             }
-            /* Calcular altura de la rampa en esa posición predicha usando   *
-             * la ecuación del plano desde el hit en lookahead.              *
-             * Solo aplicar si la extrapolación da altura VÁLIDA (≥ 0) y     *
-             * mayor que el suelo plano. La extrapolación hacia atrás        *
-             * (predicted_next detrás de next_pos) da alturas negativas      *
-             * antes del inicio de la rampa; las descartamos.                */
-            f32 ramp_y_at_next = next_pos.y - (n.x * (predicted_next.x - next_pos.x) + n.z * (predicted_next.z - next_pos.z)) / n.y;
-            if (ramp_y_at_next > 0.0f && ramp_y_at_next > fh.y) {  // rampa válida por encima del suelo plano
-                floor_y = ramp_y_at_next;
-                floor_normal = n;
-                floor_hit = true;
+            /* Si el jugador está cerca del inicio de la rampa (predicted_next
+             * está a menos de 20 unidades del hit en lookahead en X/Z),
+             * usar directamente la altura del lookahead en lugar de extrapolar
+             * hacia atrás (lo que da alturas negativas antes de la rampa). */
+            f32 dx = predicted_next.x - next_pos.x;
+            f32 dz = predicted_next.z - next_pos.z;
+            f32 dist_to_lookahead = sqrtf(dx * dx + dz * dz);
+            
+            if (dist_to_lookahead < 20.0f) {
+                /* Cerca de la rampa: confiar en la altura del lookahead */
+                if (next_pos.y > fh.y) {
+                    floor_y = next_pos.y;
+                    floor_normal = n;
+                    floor_hit = true;
+                }
+            } else {
+                /* Lejos: extrapolación plana solo si da altura válida y mayor */
+                f32 ramp_y_at_next = next_pos.y - (n.x * (predicted_next.x - next_pos.x) + n.z * (predicted_next.z - next_pos.z)) / n.y;
+                if (ramp_y_at_next > 0.0f && ramp_y_at_next > fh.y) {
+                    floor_y = ramp_y_at_next;
+                    floor_normal = n;
+                    floor_hit = true;
+                }
             }
         }
     }
