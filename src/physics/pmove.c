@@ -296,7 +296,9 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Gravedad tangencial en rampa ───────────────────────────────────── *
      * Aplicar si en rampa actual O predictiva (para transición flat→rampa). *
      * Solo componente horizontal; la posición vertical la maneja el snap.   *
-     * Cap horizontal speed to prevent runaway acceleration on steep ramps.  */
+     * Cap horizontal speed to prevent runaway acceleration on steep ramps.  *
+     * FIX: asegurar que la gravedad SIEMPRE tire HACIA ABAJO de la rampa    *
+     * (disminuya Y), independientemente de la orientación de la normal.    */
     bool on_ramp_for_gravity = on_ramp_curr || on_ramp_predictive;
     Vec3 ramp_normal_for_gravity = on_ramp_curr ? floor_normal_curr : ramp_normal_predictive;
     if (p->en_suelo && on_ramp_for_gravity) {
@@ -321,8 +323,22 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         }
         if (!walking_up) {
             /* Solo aplicar componente horizontal de la gravedad tangencial.
-             * La componente vertical la maneja el snap al suelo (vel.y = 0). */
+             * La componente vertical la maneja el snap al suelo (vel.y = 0).
+             * FIX: asegurar que el componente horizontal tire HACIA ABAJO
+             * (disminuya Y), no hacia arriba de la rampa. */
             Vec3 gt_horiz = { gt.x, 0.0f, gt.z };
+            if (ramp_normal_for_gravity.y > 0.001f) {
+                /* Cambio esperado en Y por moverse en dirección gt_horiz:
+                 * dy = -(nx * vx + nz * vz) / ny  (para ny > 0) */
+                f32 expected_dy = -(ramp_normal_for_gravity.x * gt_horiz.x +
+                                    ramp_normal_for_gravity.z * gt_horiz.z) /
+                                    ramp_normal_for_gravity.y;
+                if (expected_dy > 0.0f) {
+                    /* Esto subiría la rampa → invertir componente horizontal */
+                    gt_horiz.x = -gt_horiz.x;
+                    gt_horiz.z = -gt_horiz.z;
+                }
+            }
             p->vel = vec3_add(p->vel, vec3_scale(gt_horiz, dt));
         }
     }
