@@ -293,11 +293,16 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     /* Override: si el check predictivo detectó rampa pero el floor detection
      * devuelve suelo plano (transición flat→rampa), usar normal de rampa
-     * pero NO el y predictivo (que está adelante del jugador).
-     * El snap usará la altura real del suelo en la posición actual. */
+     * y calcular la altura de la rampa en la posición ACTUAL del jugador
+     * usando el plano de la rampa detectada predictivamente. */
     if (on_ramp && fh.hit && fh.normal.y > 0.99f && ramp_normal.y < 0.99f && fh_predictive.hit) {
         fh.normal = ramp_normal;
-        /* fh.y se mantiene del floor detection real en la posición actual */
+        /* Calcular altura de rampa en posición actual del jugador:
+         * Plano: n · (X - P) = 0  =>  Y = Py - (nx*(X-Px) + nz*(Z-Pz)) / ny */
+        f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
+        if (fabsf(ny) > 1e-4f) {
+            fh.y = fh_predictive.y - (nx * (p->pos.x - fh_predictive.pos.x) + nz * (p->pos.z - fh_predictive.pos.z)) / ny;
+        }
     }
 
     /* Snap al suelo: en rampa permitir snap aunque el jugador esté ligeramente *
