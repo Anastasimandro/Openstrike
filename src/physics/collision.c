@@ -534,20 +534,11 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
     f32 max_dist = RAY_START_OFFSET + SV_STEPSIZE + radius + 20.0f;
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
-    /* Use wider horizontal query radius (2x player radius) to catch ramp triangles
-     * that extend beyond the player's immediate footprint (e.g., wide ramps). */
-    const f32 QUERY_RADIUS = radius * 2.0f;  /* 32 units */
-
-    u32 face_count = 0;
-    u16 face_indices[BP_TEMP_MAX];
-
-    if (bp && bp->built) {
-        Vec3 mins = { pos.x - QUERY_RADIUS, pos.y - max_dist, pos.z - QUERY_RADIUS };
-        Vec3 maxs = { pos.x + QUERY_RADIUS, pos.y + RAY_START_OFFSET + 2.0f, pos.z + QUERY_RADIUS };
-        face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
-    } else {
-        face_count = map->face_count;
-    }
+    /* TEMPORARY: bypass broadphase for floor detection to isolate bug.
+     * Always scan all faces. */
+    (void)bp;
+    u32 face_count = map->face_count;
+    u16 face_indices[BP_TEMP_MAX];  /* unused when bypassing broadphase */
 
     for (int o = 0; o < 5; o++) {
         Vec3 origin = origins[o];
@@ -555,7 +546,7 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
         f32 best_hit_y = -1e9f;
 
         for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
-            u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
+            u32 fi = fi_idx;  /* direct index since we're bypassing broadphase */
             if (fi >= (u32)map->face_count) continue;
 
             const MapFace *face = &map->faces[fi];
