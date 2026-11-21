@@ -704,16 +704,17 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
         Vec3 remaining_vel = vec3_scale(vec3_sub(end, start), 1.0f - hit.t);
         /* Slide: full 3D slide (GoldSrc PM_FlyMove style). Floor snap in phys_tick
          * will correct position and zero vertical velocity on ground.
-         * The slide projection onto the hit plane naturally handles ramps:
-         * velocity is projected along the surface, keeping player on the ramp. */
+         * Project onto hit plane, then zero Y component to prevent feedback loop
+         * where horizontal velocity on ramps gets converted to vertical velocity
+         * by the slide projection (since hit.normal has Y component). */
         f32 into = vec3_dot(remaining_vel, hit.normal);
         if (into < 0.0f) {
             remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
         }
-
-        /* Ramp correction DISABLED: the slide projection above keeps the player
-         * on the ramp plane. The previous correction caused a feedback loop
-         * where each slide pass pushed the player further up the ramp. */
+        /* Zero Y velocity after slide - floor snap handles vertical positioning.
+         * This prevents the feedback loop where each slide pass on a ramp
+         * adds vertical velocity, causing the player to fly up. */
+        remaining_vel.y = 0.0f;
 
         start = new_pos;
         end = vec3_add(start, remaining_vel);
