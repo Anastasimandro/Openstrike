@@ -71,6 +71,25 @@ static inline Vec3 vec3_project_on_plane(Vec3 v, Vec3 n)
     return vec3_sub(v, vec3_scale(n, vec3_dot(v, n)));
 }
 
+/* Calcula la componente tangencial de la gravedad en una pendiente (vector tangent al plano). *
+ * gravity_vec = (0, -SV_GRAVITY, 0)                                                          *
+ * tangent_gravity = gravity_vec - normal * dot(gravity_vec, normal)                          *
+ * Esta es la fórmula correcta (GoldSrc), no la aproximación anterior.                        */
+static inline Vec3 gravity_tangent(Vec3 normal)
+{
+    /* gravity = (0, -SV_GRAVITY, 0) */
+    /* dot(gravity, normal) = -SV_GRAVITY * normal.y */
+    /* tangent = gravity - normal * dot = (0, -SV_GRAVITY, 0) - normal * (-SV_GRAVITY * normal.y) */
+    /*        = (0, -SV_GRAVITY, 0) + normal * (SV_GRAVITY * normal.y) */
+    f32 scale = SV_GRAVITY * normal.y;
+    Vec3 t = {
+        normal.x * scale,
+        normal.y * scale - SV_GRAVITY,
+        normal.z * scale
+    };
+    return t;
+}
+
 /* ── Agachado (5c): transición suave ─────────────────────────────────────── */
 
 static void phys_crouch_init(PhysPlayer *p)
@@ -264,8 +283,8 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Override predictivo para transición flat→rampa ────────────────── *
      * Si el check predictivo detectó rampa, calcular la altura de la rampa *
      * en la posición ACTUAL del jugador usando el plano de la rampa.       *
-     * Solo aplicar si la altura calculada está a nivel o por encima del    *
-     * suelo plano detectado (fh.y), indicando que ya estamos sobre la rampa. */
+     * Aplicar SIEMPRE que tengamos datos predictivos válidos (el snap      *
+     * fallará naturalmente si la rampa aún no está a nuestra altura).     */
     bool predictive_ramp_valid = false;
     f32 predictive_ramp_y = fh.y;
     Vec3 predictive_ramp_normal = fh.normal;
@@ -277,12 +296,9 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
         if (fabsf(ny) > 1e-4f) {
             f32 ramp_y_at_player = fh_predictive.y - (nx * (p->pos.x - next_pos.x) + nz * (p->pos.z - next_pos.z)) / ny;
-            /* Solo usar si la rampa está a la altura del suelo plano o por encima */
-            if (ramp_y_at_player >= fh.y - 1.0f) {
-                predictive_ramp_valid = true;
-                predictive_ramp_y = ramp_y_at_player;
-                predictive_ramp_normal = ramp_normal;
-            }
+            predictive_ramp_valid = true;
+            predictive_ramp_y = ramp_y_at_player;
+            predictive_ramp_normal = ramp_normal;
         }
     }
 
@@ -302,16 +318,14 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     }
 
     if (floor_hit && p->pos.y <= floor_y + SV_STEPSIZE && moving_into_floor) {
-        p->pos.y = floor_y;
+        p->pos.y    = floor_y;
+        p->vel.y    = 0.0f;
         p->en_suelo = true;
 
-        /* ── Suelo pendiente: manejo estilo GoldSrc ────────────────────── *
-         * 1. Re-proyectar wish_dir al plano de la rampa                    *
-         * 2. Acelerar en wish_dir (horizontal)                             *
-         * 3. Aplicar gravedad VERTICAL                                     *
-         * 4. Clip velocidad al plano del suelo (proyecta vertical→horizontal) *
-         * 5. NO poner vel.y=0: el clip deja la componente vertical correcta *
-         *    para permanecer en el suelo.                                  */
+        /* ── Suelo pendiente: gravedad tangencial explícita + aceleración ── *
+         * La gravedad tangencial es el vector tangente al plano (fórmula    *
+         * correcta: gravity - normal * dot(gravity, normal)).               *
+         * Se aplica UNA VEZ por tick, luego aceleración, sin clip posterior. */
         if (floor_normal.y < 0.95f) {
             /* Re-proyectar wish_dir al plano de la rampa actual */
             Vec3 wish_ramp = wish_dir;
@@ -327,27 +341,18 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 }
             }
 
+            /* Gravedad tangencial (vector tangente al plano, fórmula correcta) */
+            Vec3 gt = gravity_tangent(floor_normal);
+            p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
+
             if (tiene_wish) {
                 f32 ws = p->agachado ? SPEED_DUCK :
                          p->caminando ? SPEED_WALK : SPEED_RUN;
                 acelerar(p, wish_ramp, ws, SV_ACCELERATE, dt);
             }
 
-            /* Gravedad vertical (estilo GoldSrc) */
-            p->vel.y -= SV_GRAVITY * dt;
-
-            /* Clip velocidad al plano del suelo: elimina componente normal *
-             * Esto convierte la gravedad vertical en movimiento horizontal *
-             * paralelo a la pendiente (hacia abajo).                     */
-            if (floor_normal.y > 0.001f) {
-                f32 vn = vec3_dot(p->vel, floor_normal);
-                if (vn < 0.0f) {
-                    p->vel = vec3_sub(p->vel, vec3_scale(floor_normal, vn));
-                }
-            }
-
-            /* Corrección de posición: asegurar que el jugador está exactamente en el suelo *
-             * (el clip de velocidad mantiene la componente vertical correcta para seguir el suelo) */
+            /* NO clip al plano: la gravedad tangencial YA es tangente al plano.
+             * El snap de posición (p->pos.y = floor_y) corrige deriva vertical. */
             p->pos.y = floor_y;
 
             if (p->jump_buffer_ticks > 0) {
