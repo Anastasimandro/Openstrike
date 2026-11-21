@@ -329,17 +329,15 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
     /* ── Predictive override para snap ──────────────────────────────────── *
-     * Solo aplicar durante la TRANSICIÓN flat→rampa (!on_ramp_curr && on_ramp_predictive).
-     * Una vez en la rampa, confiamos en collision_detectar_suelo (raycast 5-ray fan)
-     * que ya devuelve la altura correcta de la rampa. Si seguimos aplicando
-     * el override en la rampa, se crea un bucle de realimentación positiva:
-     * next_pos sube con la rampa → extrapolación añade más altura → floor_y sube →
-     * player sube → next_pos sube más... hasta volar fuera de la rampa. */
+     * Solo aplicar durante la TRANSICIÓN flat→rampa (fh no es rampa aún, pero
+     * predictive sí detecta rampa adelante). Una vez en la rampa (fh.normal.y < 0.95),
+     * confiamos en collision_detectar_suelo que ya devuelve la altura correcta. */
     f32 floor_y = fh.y;
     Vec3 floor_normal = fh.normal;
     bool floor_hit = fh.hit;
+    bool fh_is_ramp = fh.hit && fh.normal.y < 0.95f && fh.normal.y > 0.001f;
 
-    if (!on_ramp_curr && on_ramp_predictive && fh.hit) {
+    if (!fh_is_ramp && on_ramp_predictive && fh.hit) {
         Vec3 n = ramp_normal_predictive;
         if (fabsf(n.y) > 1e-4f) {
             /* Estimar posición horizontal después de este tick */

@@ -666,12 +666,27 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
         Vec3 new_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), move_t));
 
         Vec3 remaining_vel = vec3_scale(vec3_sub(end, start), 1.0f - hit.t);
-        /* Swept capsule slide: project remaining velocity onto hit plane (full 3D).
-         * This is the standard GoldSrc PM_FlyMove approach. Floor snap will
-         * later set vel.y = 0 when on ground, correcting any Y from ramp slides. */
-        f32 into = vec3_dot(remaining_vel, hit.normal);
-        if (into < 0.0f) {
-            remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
+        /* Slide: for ramps (normal.y > 0.3) use horizontal-only slide to prevent
+         * uncontrolled Y gain. For vertical walls (normal.y <= 0.3) use full 3D slide.
+         * Phys_tick's floor snap will correct position on ramps; wall collision test
+         * doesn't need to climb ramps (that's phys_tick's job via floor snap). */
+        if (hit.normal.y > 0.3f) {
+            /* Horizontal-only slide for ramps and shallow slopes */
+            Vec3 horiz_normal = { hit.normal.x, 0.0f, hit.normal.z };
+            f32 horiz_len = vec3_len(horiz_normal);
+            if (horiz_len > 1e-4f) {
+                horiz_normal = vec3_scale(horiz_normal, 1.0f / horiz_len);
+                f32 into = vec3_dot(remaining_vel, horiz_normal);
+                if (into < 0.0f) {
+                    remaining_vel = vec3_sub(remaining_vel, vec3_scale(horiz_normal, into));
+                }
+            }
+        } else {
+            /* Full 3D slide for vertical walls */
+            f32 into = vec3_dot(remaining_vel, hit.normal);
+            if (into < 0.0f) {
+                remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
+            }
         }
 
         start = new_pos;
