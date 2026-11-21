@@ -670,6 +670,7 @@ FloorHit collision_detectar_suelo(const Map *map, const Broadphase *bp, Vec3 pos
 
 bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_pos, Vec3 *vel, f32 dt, f32 crouch_height, Vec3 floor_normal, Vec3 *out_pos)
 {
+    (void)floor_normal;  // Unused: slide projection handles ramps correctly
     if (!map || !map->cargado || map->face_count == 0) {
         *out_pos = vec3_add(start_pos, vec3_scale(*vel, dt));
         return false;
@@ -687,7 +688,6 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
     Vec3 end = { start_pos.x + vel->x * dt, start_pos.y + capsule_half_h + vel->y * dt, start_pos.z + vel->z * dt };
 
     bool any_correction = false;
-    bool ramp_correction_applied = false;
 
     for (int pass = 0; pass < MAX_SLIDE_PASSES; pass++) {
         SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, true);
@@ -703,36 +703,17 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
 
         Vec3 remaining_vel = vec3_scale(vec3_sub(end, start), 1.0f - hit.t);
         /* Slide: full 3D slide (GoldSrc PM_FlyMove style). Floor snap in phys_tick
-         * will correct position and zero vertical velocity on ground. */
+         * will correct position and zero vertical velocity on ground.
+         * The slide projection onto the hit plane naturally handles ramps:
+         * velocity is projected along the surface, keeping player on the ramp. */
         f32 into = vec3_dot(remaining_vel, hit.normal);
         if (into < 0.0f) {
             remaining_vel = vec3_sub(remaining_vel, vec3_scale(hit.normal, into));
         }
 
-        /* Ramp floor correction: if hit is a ramp (0.3 < normal.y < 0.95),
-         * snap position to ramp surface at new X/Z to prevent flying up or
-         * stopping at base. Also zero Y velocity to prevent fly-up from
-         * accumulated slide velocity.
-         * SKIP if hit normal matches the floor normal (player is already on this surface). */
-        if (hit.normal.y > 0.3f && hit.normal.y < 0.95f) {
-            /* Check if this is the floor surface the player is standing on.
-             * Use dot product to compare normals (threshold ~0.999 for same surface). */
-            f32 normal_similarity = vec3_dot(hit.normal, floor_normal);
-            if (normal_similarity < 0.999f) {
-                /* Compute ramp height at new_pos X/Z using hit plane equation:
-                 * n.x*(x - hit.x) + n.y*(y - hit.y) + n.z*(z - hit.z) = 0
-                 * y = hit.y - (n.x*(x - hit.x) + n.z*(z - hit.z)) / n.y */
-                Vec3 hit_pos = vec3_add(start, vec3_scale(vec3_sub(end, start), hit.t));
-                f32 ramp_y = hit_pos.y - (hit.normal.x * (new_pos.x - hit_pos.x) + hit.normal.z * (new_pos.z - hit_pos.z)) / hit.normal.y;
-                f32 capsule_feet_y = ramp_y - capsule_half_h;
-                if (capsule_feet_y > new_pos.y - capsule_half_h) {
-                    new_pos.y = capsule_feet_y + capsule_half_h;
-                    /* Zero Y velocity to prevent fly-up from accumulated slide */
-                    remaining_vel.y = 0.0f;
-                    ramp_correction_applied = true;
-                }
-            }
-        }
+        /* Ramp correction DISABLED: the slide projection above keeps the player
+         * on the ramp plane. The previous correction caused a feedback loop
+         * where each slide pass pushed the player further up the ramp. */
 
         start = new_pos;
         end = vec3_add(start, remaining_vel);
@@ -747,11 +728,6 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
     if (any_correction) {
         Vec3 final_feet = { out_pos->x, out_pos->y, out_pos->z };
         *vel = vec3_scale(vec3_sub(final_feet, original_pos), 1.0f / dt);
-        /* If ramp correction was applied, zero Y velocity to prevent fly-up
-         * in subsequent calls (e.g., wall collision test loop). */
-        if (ramp_correction_applied) {
-            vel->y = 0.0f;
-        }
     } else {
         *out_pos = (Vec3){ end.x, end.y - capsule_half_h, end.z };
     }
