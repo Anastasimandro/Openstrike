@@ -350,12 +350,13 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
             Vec3 gt = gravity_tangent(floor_normal);
             bool walking_up = false;
             if (tiene_wish) {
-                /* Dirección de bajada = -horizontal(normal) */
-                Vec3 down_slope = { -floor_normal.x, 0.0f, -floor_normal.z };
+                /* Dirección de bajada = componente horizontal de la gravedad tangencial *
+                 * (apunta hacia donde la gravedad te haría deslizar)                    */
+                Vec3 down_slope = { gt.x, 0.0f, gt.z };
                 f32 ds_len = sqrtf(down_slope.x * down_slope.x + down_slope.z * down_slope.z);
                 if (ds_len > 0.001f) {
                     down_slope.x /= ds_len; down_slope.z /= ds_len;
-                    /* Si wish_dir tiene componente en dirección de bajada, NO estamos subiendo */
+                    /* Si wish_ramp apunta OPUESTO a la bajada, estamos subiendo */
                     if (vec3_dot(wish_ramp, down_slope) < 0.0f) {
                         walking_up = true;
                     }
