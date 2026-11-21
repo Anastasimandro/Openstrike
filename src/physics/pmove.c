@@ -311,23 +311,13 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Detectar suelo real en NUEVA posición ──────────────────────────── */
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
-    /* ── Fallback: raycast at predicted next position to catch ramps ────── *
-     * If regular floor detection returns flat floor but we're moving fast   *
-     * horizontally, check the position we'll be at after this tick's move.  */
-    if (fh.hit && fh.normal.y > 0.99f && tiene_wish) {
-        Vec3 predicted_next = p->pos;
-        predicted_next.x += wish_dir.x * wish_speed * dt;
-        predicted_next.z += wish_dir.z * wish_speed * dt;
-        FloorHit fh_next = collision_detectar_suelo(map, bp, predicted_next, p->crouch_height);
-        if (fh_next.hit && fh_next.normal.y < 0.95f && fh_next.y > fh.y) {
-            fh = fh_next;  /* Use the ramp detection from next position */
-        }
-    }
-
     /* ── Predictive override para snap ──────────────────────────────────── *
      * Si detectamos rampa adelante, calcular su altura en la posición       *
      * SIGUIENTE del jugador (tras movimiento horizontal de este tick)       *
-     * y usarla si está por encima del suelo detectado.                      */
+     * y usarla si está por encima del suelo detectado.                      *
+     * Fix: no extrapolar hacia atrás (da altura negativa antes de la rampa). *
+     * Solo aplicar si la posición predicha está más allá del inicio de la   *
+     * rampa (heurística: predicted_next.x > lookahead_x - margen).          */
     f32 floor_y = fh.y;
     Vec3 floor_normal = fh.normal;
     bool floor_hit = fh.hit;
@@ -335,15 +325,16 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     if (on_ramp_predictive && fh.hit) {
         Vec3 n = ramp_normal_predictive;
         if (fabsf(n.y) > 1e-4f) {
-            /* Estimar posición horizontal después de este tick:
-             * wish_dir proyectado a rampa * wish_speed * dt.
-             * Usar wish_dir ya proyectado (tiene componente Y en rampa). */
+            /* Estimar posición horizontal después de este tick */
             Vec3 predicted_next = p->pos;
             if (tiene_wish) {
                 predicted_next.x += wish_dir.x * wish_speed * dt;
                 predicted_next.z += wish_dir.z * wish_speed * dt;
             }
-            /* Calcular altura de la rampa en esa posición predicha */
+            /* Calcular altura de la rampa en esa posición predicha usando   *
+             * la ecuación del plano desde el hit en lookahead.              *
+             * Solo aplicar si la extrapolación da altura MAYOR que el suelo *
+             * plano (evita altura negativa al extrapolar hacia atrás).      */
             f32 ramp_y_at_next = next_pos.y - (n.x * (predicted_next.x - next_pos.x) + n.z * (predicted_next.z - next_pos.z)) / n.y;
             if (ramp_y_at_next > fh.y) {  // rampa por encima del suelo plano
                 floor_y = ramp_y_at_next;
