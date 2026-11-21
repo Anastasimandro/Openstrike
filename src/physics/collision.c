@@ -675,8 +675,8 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
 
         /* Ramp floor correction: if hit is a ramp (0.3 < normal.y < 0.95),
          * snap position to ramp surface at new X/Z to prevent flying up or
-         * stopping at base. This allows wall collision test to climb ramps
-         * without full phys_tick floor snap. */
+         * stopping at base. Also zero Y velocity to prevent fly-up from
+         * accumulated slide velocity. */
         if (hit.normal.y > 0.3f && hit.normal.y < 0.95f) {
             /* Compute ramp height at new_pos X/Z using hit plane equation:
              * n.x*(x - hit.x) + n.y*(y - hit.y) + n.z*(z - hit.z) = 0
@@ -686,6 +686,8 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
             f32 capsule_feet_y = ramp_y - capsule_half_h;
             if (capsule_feet_y > new_pos.y - capsule_half_h) {
                 new_pos.y = capsule_feet_y + capsule_half_h;
+                /* Zero Y velocity to prevent fly-up from accumulated slide */
+                remaining_vel.y = 0.0f;
             }
         }
 
