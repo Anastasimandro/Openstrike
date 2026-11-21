@@ -346,25 +346,27 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 predicted_next.x += wish_dir.x * wish_speed * dt;
                 predicted_next.z += wish_dir.z * wish_speed * dt;
             }
-            /* Si el jugador está cerca del inicio de la rampa (predicted_next
-             * está a menos de 20 unidades del hit en lookahead en X/Z),
-             * usar directamente la altura del lookahead en lugar de extrapolar
-             * hacia atrás (lo que da alturas negativas antes de la rampa). */
+            /* Si el jugador está MUY cerca del inicio de la rampa (predicted_next
+             * está a menos de 10 unidades del hit en lookahead en X/Z),
+             * usar directamente la altura del lookahead si es una transición suave
+             * (diferencia < 3 unidades con el suelo actual). */
             f32 dx = predicted_next.x - next_pos.x;
             f32 dz = predicted_next.z - next_pos.z;
             f32 dist_to_lookahead = sqrtf(dx * dx + dz * dz);
             
-            if (dist_to_lookahead < 20.0f) {
-                /* Cerca de la rampa: confiar en la altura del lookahead */
-                if (next_pos.y > fh.y) {
+            if (dist_to_lookahead < 10.0f) {
+                /* Muy cerca de la rampa: confiar en la altura del lookahead
+                 * solo si la transición es suave (salto < 3 unidades). */
+                if (next_pos.y > fh.y && next_pos.y < fh.y + 3.0f) {
                     floor_y = next_pos.y;
                     floor_normal = n;
                     floor_hit = true;
                 }
             } else {
-                /* Lejos: extrapolación plana solo si da altura válida y mayor */
+                /* Lejos: extrapolación plana solo si da altura válida y mayor,
+                 * y la diferencia con el suelo actual es pequeña (< 3 unidades). */
                 f32 ramp_y_at_next = next_pos.y - (n.x * (predicted_next.x - next_pos.x) + n.z * (predicted_next.z - next_pos.z)) / n.y;
-                if (ramp_y_at_next > 0.0f && ramp_y_at_next > fh.y) {
+                if (ramp_y_at_next > 0.0f && ramp_y_at_next > fh.y && ramp_y_at_next < fh.y + 3.0f) {
                     floor_y = ramp_y_at_next;
                     floor_normal = n;
                     floor_hit = true;
