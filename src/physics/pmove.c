@@ -311,6 +311,19 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Detectar suelo real en NUEVA posición ──────────────────────────── */
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
+    /* ── Fallback: raycast at predicted next position to catch ramps ────── *
+     * If regular floor detection returns flat floor but we're moving fast   *
+     * horizontally, check the position we'll be at after this tick's move.  */
+    if (fh.hit && fh.normal.y > 0.99f && tiene_wish) {
+        Vec3 predicted_next = p->pos;
+        predicted_next.x += wish_dir.x * wish_speed * dt;
+        predicted_next.z += wish_dir.z * wish_speed * dt;
+        FloorHit fh_next = collision_detectar_suelo(map, bp, predicted_next, p->crouch_height);
+        if (fh_next.hit && fh_next.normal.y < 0.95f && fh_next.y > fh.y) {
+            fh = fh_next;  /* Use the ramp detection from next position */
+        }
+    }
+
     /* ── Predictive override para snap ──────────────────────────────────── *
      * Si detectamos rampa adelante, calcular su altura en la posición       *
      * SIGUIENTE del jugador (tras movimiento horizontal de este tick)       *
