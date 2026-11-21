@@ -429,8 +429,9 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
 
     /* Broadphase query covering FULL vertical range at lookahead position.
      * This ensures ramp triangles are found even at cell boundaries.
-     * Use wider horizontal query radius (2x player radius) to catch wide ramps. */
-    const f32 QUERY_RADIUS = radius * 2.0f;  /* 32 units */
+     * Use wider horizontal query radius (3x player radius = 48) to catch wide ramps up to 80 units wide.
+     * The test ramp spans z=[-40, 40], so at lookahead_z=0 we need radius >= 40 to include edges. */
+    const f32 QUERY_RADIUS = radius * 3.0f;  /* 48 units */
     u32 face_count = 0;
     u16 face_indices[BP_TEMP_MAX];
 
