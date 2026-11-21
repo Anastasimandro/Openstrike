@@ -71,30 +71,6 @@ static inline Vec3 vec3_project_on_plane(Vec3 v, Vec3 n)
     return vec3_sub(v, vec3_scale(n, vec3_dot(v, n)));
 }
 
-/* Calcula la componente tangencial de la gravedad en una pendiente.
- * gravity_vec = (0, -SV_GRAVITY, 0)
- * tangent_gravity = gravity_vec - normal * dot(gravity_vec, normal)
- * Magnitud = SV_GRAVITY * sin(theta) donde theta = ángulo pendiente. */
-static inline Vec3 gravity_tangent(Vec3 normal)
-{
-    /* gravity_vec = (0, -SV_GRAVITY, 0) */
-    /* dot(gravity, normal) = -SV_GRAVITY * normal.y */
-    /* tangent = (0, -SV_GRAVITY, 0) - normal * (-SV_GRAVITY * normal.y)
-     *        = (0, -SV_GRAVITY, 0) + normal * (SV_GRAVITY * normal.y)
-     *        = SV_GRAVITY * (normal * normal.y - (0, 1, 0)) */
-    f32 gy = -SV_GRAVITY * normal.y;
-    Vec3 t = {
-        normal.x * gy,
-        normal.y * gy + SV_GRAVITY,
-        normal.z * gy
-    };
-    /* Corrección: tangente real = g * (n * n.y - up) */
-    t.x = SV_GRAVITY * normal.x * normal.y;
-    t.y = SV_GRAVITY * (normal.y * normal.y - 1.0f);
-    t.z = SV_GRAVITY * normal.z * normal.y;
-    return t;
-}
-
 /* ── Agachado (5c): transición suave ─────────────────────────────────────── */
 
 static void phys_crouch_init(PhysPlayer *p)
@@ -263,13 +239,6 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         } else {
             tiene_wish = false;
         }
-
-        /* Si no hay input, aplicar gravedad tangencial sobre la vel ACTUAL *
-         * (que sigue siendo horizontal en este punto).                     */
-        if (!tiene_wish && en_suelo_antes) {
-            Vec3 gt = gravity_tangent(ramp_normal);
-            p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
-        }
     }
 
     /* ── Colisión de paredes con swept capsule (vel horizontal + vertical) ── */
@@ -337,7 +306,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         p->vel.y    = 0.0f;
         p->en_suelo = true;
 
-        /* ── Suelo pendiente: manejar fricción/quieto en rampa ─────────── */
+        /* ── Suelo pendiente: manejo estilo GoldSrc ────────────────────── *
+         * 1. Re-proyectar wish_dir al plano de la rampa                    *
+         * 2. Acelerar en wish_dir (horizontal)                             *
+         * 3. Aplicar gravedad VERTICAL                                     *
+         * 4. Clip velocidad al plano del suelo (proyecta vertical→horizontal) */
         if (floor_normal.y < 0.95f) {
             /* Re-proyectar wish_dir al plano de la rampa actual */
             Vec3 wish_ramp = wish_dir;
@@ -353,18 +326,18 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 }
             }
 
-            /* SIEMPRE aplicar gravedad tangencial en rampa (componente de gravedad paralela al plano) *
-             * Esto acelera cuesta abajo y frena cuesta arriba, independientemente del input.        */
-            Vec3 gt = gravity_tangent(floor_normal);
-            p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
-
             if (tiene_wish) {
                 f32 ws = p->agachado ? SPEED_DUCK :
                          p->caminando ? SPEED_WALK : SPEED_RUN;
                 acelerar(p, wish_ramp, ws, SV_ACCELERATE, dt);
             }
 
-            /* Clip velocidad al plano del suelo (eliminar componente normal) */
+            /* Gravedad vertical (estilo GoldSrc) */
+            p->vel.y -= SV_GRAVITY * dt;
+
+            /* Clip velocidad al plano del suelo: elimina componente normal *
+             * Esto convierte la gravedad vertical en movimiento horizontal *
+             * paralelo a la pendiente (hacia abajo).                     */
             if (floor_normal.y > 0.001f) {
                 f32 vn = vec3_dot(p->vel, floor_normal);
                 if (vn < 0.0f) {
