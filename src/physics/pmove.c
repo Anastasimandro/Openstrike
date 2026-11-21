@@ -357,11 +357,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         p->pos.y = floor_y;
         p->en_suelo = true;
 
-        /* En rampa: proyectar velocity COMPLETA (3D) al plano para próximo tick */
+        /* En rampa (y en suelo): velocity debe quedar horizontal (Y=0).
+         * El snap al suelo maneja la posición vertical; proyectar velocity
+         * al plano de la rampa introduce componente Y que lucha contra el snap.
+         * GoldSrc: vel.y = 0 en suelo; solo componente horizontal se preserva. */
         if (floor_normal.y < 0.95f) {
-            Vec3 vel_proj = vec3_project_on_plane(p->vel, floor_normal);
-            p->vel = vel_proj;
-            p->pos.y = floor_y;
+            p->vel.y = 0.0f;
         }
 
         if (p->jump_buffer_ticks > 0) {
