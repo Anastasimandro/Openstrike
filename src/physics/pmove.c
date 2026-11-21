@@ -217,13 +217,15 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         }
     }
 
-    /* ── Wish_dir final: proyectar a plano de rampa (actual o predictiva) ─ */
+    /* ── Wish_dir final: proyectar a plano de rampa (actual o predictiva) ─ *
+     * wish_dir debe quedar horizontal (Y=0) para la aceleración; el snap   *
+     * al suelo maneja la posición vertical. Proyectar a plano y anular Y.  */
     Vec3 ramp_normal_for_wish = on_ramp_curr ? floor_normal_curr : (on_ramp_predictive ? ramp_normal_predictive : (Vec3){0,1,0});
     bool use_ramp_wish = on_ramp_curr || on_ramp_predictive;
     Vec3 wish_dir = wish_dir_input;
     if (use_ramp_wish && tiene_wish) {
         wish_dir = vec3_project_on_plane(wish_dir_input, ramp_normal_for_wish);
-        /* Mantener componente Y para subidas */
+        wish_dir.y = 0.0f;  // wish_dir horizontal only
         f32 len = vec3_len(wish_dir);
         if (len > 0.001f) {
             wish_dir = vec3_scale(wish_dir, 1.0f / len);
