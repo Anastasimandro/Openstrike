@@ -316,12 +316,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                           ramp_normal_for_gravity.z * ramp_normal_for_gravity.z);
         bool walking_up = false;
         if (tiene_wish && ds_len > 0.001f) {
-            Vec3 down_slope_orig = { ramp_normal_for_gravity.x / ds_len, 0.0f, ramp_normal_for_gravity.z / ds_len };
+            Vec3 down_slope_norm = { ramp_normal_for_gravity.x / ds_len, 0.0f, ramp_normal_for_gravity.z / ds_len };
             Vec3 wish_horiz = { wish_dir.x, 0.0f, wish_dir.z };
             f32 wh_len = vec3_len(wish_horiz);
             if (wh_len > 0.001f) {
                 wish_horiz = vec3_scale(wish_horiz, 1.0f / wh_len);
-                if (vec3_dot(wish_horiz, { ramp_normal_for_gravity.x / ds_len, 0.0f, ramp_normal_for_gravity.z / ds_len }) < 0.0f) {
+                if (vec3_dot(wish_horiz, down_slope_orig) < 0.0f) {
                     walking_up = true;
                 }
             }
