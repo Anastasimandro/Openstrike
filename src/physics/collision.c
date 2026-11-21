@@ -478,17 +478,19 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
                         better = true;
                     } else {
                         bool hit_is_ramp = n.y < 0.95f;
+                        bool best_is_ramp = best_normal->y < 0.95f;
+                        bool hit_is_flat = n.y > 0.95f;
                         bool best_is_flat = best_normal->y > 0.95f;
                         /* Strongly prefer ramps over flat floors:
                          * - If hit is ramp and best is flat, prefer ramp even if up to 10 units lower
                          * - If both same type, prefer higher hit_y */
                         if (hit_is_ramp && best_is_flat) {
                             if (hit_y >= best_y - 10.0f) better = true;
-                        } else if (!hit_is_ramp && !best_is_flat) {
-                            if (hit_y > best_y + 1e-4f) better = true;
                         } else if (hit_is_ramp && best_is_ramp) {
                             if (hit_y > best_y + 1e-4f) better = true;
-                        } else if (!hit_is_ramp && best_is_flat) {
+                        } else if (hit_is_flat && best_is_flat) {
+                            if (hit_y > best_y + 1e-4f) better = true;
+                        } else if (hit_is_flat && best_is_ramp) {
                             if (hit_y > best_y + 1e-4f) better = true;
                         }
                     }
