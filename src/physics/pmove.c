@@ -280,11 +280,10 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     /* ── Detectar suelo real contra geometría del mapa ──────────────────── */
     FloorHit fh = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
 
-    /* ── Override predictivo para transición flat→rampa ────────────────── *
-     * Si el check predictivo detectó rampa, calcular la altura de la rampa *
-     * en la posición ACTUAL del jugador usando el plano de la rampa.       *
-     * Aplicar si la rampa está a menos de SV_STEPSIZE por debajo del       *
-     * suelo plano (transición inminente) o por encima.                    */
+    /* ── Override predictivo para transición flat→rampa ────────────────__ *
+     * Si el check predictivo detectó rampa, SIEMPRE usar su normal y     *
+     * calcular la altura de la rampa en la posición actual.              *
+     * Clampear la altura para no bajar del suelo plano detectado (fh.y). */
     bool predictive_ramp_valid = false;
     f32 predictive_ramp_y = fh.y;
     Vec3 predictive_ramp_normal = fh.normal;
@@ -296,13 +295,11 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         f32 nx = ramp_normal.x, ny = ramp_normal.y, nz = ramp_normal.z;
         if (fabsf(ny) > 1e-4f) {
             f32 ramp_y_at_player = fh_predictive.y - (nx * (p->pos.x - next_pos.x) + nz * (p->pos.z - next_pos.z)) / ny;
-            /* Aplicar solo si la rampa está a la altura del suelo plano o por encima *
-             * (evita snap a altura negativa cuando aún no hemos llegado a la rampa) */
-            if (ramp_y_at_player >= fh.y) {
-                predictive_ramp_valid = true;
-                predictive_ramp_y = ramp_y_at_player;
-                predictive_ramp_normal = ramp_normal;
-            }
+            /* Clampear: no bajar del suelo plano real (evita snap a altura negativa) */
+            if (ramp_y_at_player < fh.y) ramp_y_at_player = fh.y;
+            predictive_ramp_valid = true;
+            predictive_ramp_y = ramp_y_at_player;
+            predictive_ramp_normal = ramp_normal;
         }
     }
 
@@ -322,14 +319,14 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     }
 
     if (floor_hit && p->pos.y <= floor_y + SV_STEPSIZE && moving_into_floor) {
-        p->pos.y    = floor_y;
-        p->vel.y    = 0.0f;
+        p->pos.y = floor_y;
         p->en_suelo = true;
 
-        /* ── Suelo pendiente: gravedad tangencial explícita + aceleración ── *
+        /* ── Suelo pendiente: gravedad tangencial solo si no subimos ────── *
          * La gravedad tangencial es el vector tangente al plano (fórmula    *
-         * correcta: gravity - normal * dot(gravity, normal)).               *
-         * Se aplica UNA VEZ por tick, luego aceleración, sin clip posterior. */
+         * correcta: gravity - normal * dot(gravity, normal)).              *
+         * Solo aplicar si NO se camina HACIA ARRIBA (evita lucha contra    *
+         * la aceleración del jugador).                                     */
         if (floor_normal.y < 0.95f) {
             /* Re-proyectar wish_dir al plano de la rampa actual */
             Vec3 wish_ramp = wish_dir;
