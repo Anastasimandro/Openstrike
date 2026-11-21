@@ -246,7 +246,10 @@ static inline bool triangle_is_degenerate(Vec3 v0, Vec3 v1, Vec3 v2)
 
 static inline bool is_floor_or_ceiling(Vec3 n)
 {
-    return n.y > 0.7f || n.y < -0.7f;
+    /* Truly flat floor/ceiling (|normal.y| > 0.95) are ignored by wall sweep.
+     * Ramps (0.7 < |normal.y| < 0.95) are NOT ignored — they're collided as walls.
+     * This ensures the swept capsule hits ramp surfaces during horizontal movement. */
+    return n.y > 0.95f || n.y < -0.7f;
 }
 
 SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
