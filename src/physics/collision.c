@@ -652,6 +652,7 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
     Vec3 end = { start_pos.x + vel->x * dt, start_pos.y + capsule_half_h + vel->y * dt, start_pos.z + vel->z * dt };
 
     bool any_correction = false;
+    bool ramp_correction_applied = false;
 
     for (int pass = 0; pass < MAX_SLIDE_PASSES; pass++) {
         SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, true);
@@ -688,6 +689,7 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
                 new_pos.y = capsule_feet_y + capsule_half_h;
                 /* Zero Y velocity to prevent fly-up from accumulated slide */
                 remaining_vel.y = 0.0f;
+                ramp_correction_applied = true;
             }
         }
 
@@ -704,6 +706,11 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
     if (any_correction) {
         Vec3 final_feet = { out_pos->x, out_pos->y, out_pos->z };
         *vel = vec3_scale(vec3_sub(final_feet, original_pos), 1.0f / dt);
+        /* If ramp correction was applied, zero Y velocity to prevent fly-up
+         * in subsequent calls (e.g., wall collision test loop). */
+        if (ramp_correction_applied) {
+            vel->y = 0.0f;
+        }
     } else {
         *out_pos = (Vec3){ end.x, end.y - capsule_half_h, end.z };
     }
