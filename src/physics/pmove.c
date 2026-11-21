@@ -345,9 +345,25 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
                 }
             }
 
-            /* Gravedad tangencial (vector tangente al plano, fórmula correcta) */
+            /* Gravedad tangencial: solo aplicar cuando NO se camina HACIA ARRIBA *
+             * (evita que la gravedad luche contra la aceleración del jugador) */
             Vec3 gt = gravity_tangent(floor_normal);
-            p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
+            bool walking_up = false;
+            if (tiene_wish) {
+                /* Dirección de bajada = -horizontal(normal) */
+                Vec3 down_slope = { -floor_normal.x, 0.0f, -floor_normal.z };
+                f32 ds_len = sqrtf(down_slope.x * down_slope.x + down_slope.z * down_slope.z);
+                if (ds_len > 0.001f) {
+                    down_slope.x /= ds_len; down_slope.z /= ds_len;
+                    /* Si wish_dir tiene componente en dirección de bajada, NO estamos subiendo */
+                    if (vec3_dot(wish_ramp, down_slope) < 0.0f) {
+                        walking_up = true;
+                    }
+                }
+            }
+            if (!walking_up) {
+                p->vel = vec3_add(p->vel, vec3_scale(gt, dt));
+            }
 
             if (tiene_wish) {
                 f32 ws = p->agachado ? SPEED_DUCK :
