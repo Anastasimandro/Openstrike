@@ -21,7 +21,8 @@
 #include "types.h"
 #include "renderer/renderer.h"
 #include "renderer/textures.h"
-#include "physics/pmove.h"     /* trae collision.h -> map.h transitivamente */
+#include "physics/pmove.h"
+#include "physics/phys_log.h"
 #include "map/map.h"
 #include "map/map_zones.h"
 #include "audio/audio.h"
@@ -147,6 +148,10 @@ static int init(void)
     phys_player_init(&g_player, (Vec3){ 0.0f, 0.0f, 0.0f });
     g_player.en_suelo = true;
 
+    /* Inicializar sistema de logs de física (desactivado por defecto, pulsar F1 para activar) */
+    phys_log_init(PHYS_LOG_EVENTS, "physics_log.txt");
+    printf("[main] Physics logging initialized. Press F1 to toggle VERBOSE mode.\n");
+
     SDL_SetRelativeMouseMode(SDL_TRUE);
 
     g_running = true;
@@ -164,6 +169,10 @@ static void process_events(void)
             case SDL_KEYDOWN:
                 if (ev.key.keysym.sym == SDLK_ESCAPE) {
                     g_running = false;
+                } else if (ev.key.keysym.sym == SDLK_F1) {
+                    phys_log_toggle_verbose();
+                    printf("[main] Physics log level: %s\n",
+                           phys_log_level_name(g_phys_log_level));
                 }
                 break;
             case SDL_MOUSEMOTION:

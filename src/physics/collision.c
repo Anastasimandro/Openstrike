@@ -16,6 +16,7 @@
 
 #include "collision.h"
 #include "broadphase.h"
+#include "phys_log.h"
 #include <math.h>
 #include <string.h>
 
@@ -695,6 +696,15 @@ bool collision_bloquear_pared(const Map *map, const Broadphase *bp, Vec3 start_p
         if (!hit.hit) {
             *out_pos = end;
             break;
+        }
+
+        /* Log wall hit (only on first pass to avoid spam) */
+        if (pass == 0) {
+            /* Create a minimal PhysPlayer for logging */
+            PhysPlayer log_player = {0};
+            log_player.pos = start_pos;
+            log_player.vel = *vel;
+            phys_log_wall_hit(&log_player, &hit.normal, pass);
         }
 
         f32 move_t = hit.t - SWEEP_EPSILON;

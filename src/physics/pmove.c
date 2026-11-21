@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "pmove.h"
+#include "phys_log.h"
 #include <math.h>
 #include <string.h>
 
@@ -122,6 +123,8 @@ static void phys_crouch_update(PhysPlayer *p, const PhysInput *input, const Map 
         }
 
         if (nuevo_target != p->crouch_target) {
+            bool entering_duck = (nuevo_target == CROUCH_HEIGHT_DUCK);
+            phys_log_crouch(p, entering_duck);
             p->crouch_target = nuevo_target;
             p->crouch_transition = CROUCH_TRANSITION_TICKS;
         }
@@ -154,12 +157,22 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 {
     p->caminando = input.caminar;
 
+    /* Track previous ground state for landing detection */
+    bool en_suelo_prev = p->en_suelo;
+    bool on_ramp_prev = false;
+    FloorHit fh_prev = {0};
+    if (en_suelo_prev) {
+        fh_prev = collision_detectar_suelo(map, bp, p->pos, p->crouch_height);
+        on_ramp_prev = fh_prev.hit && fh_prev.normal.y < 0.95f && fh_prev.normal.y > 0.001f;
+    }
+
     /* ── Actualizar agachado con transición suave y comprobación de techo ── */
     phys_crouch_update(p, &input, map, bp);
 
     /* ── Jump buffer: si se pulsa salto en aire, guardar buffer ─────────── */
     if (input.saltar && !p->en_suelo) {
         p->jump_buffer_ticks = JUMP_BUFFER_TICKS;
+        phys_log_jump_buffer(p, p->jump_buffer_ticks);
     } else if (p->jump_buffer_ticks > 0) {
         p->jump_buffer_ticks--;
     }
@@ -186,6 +199,17 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     bool on_ramp_curr = p->en_suelo && fh_curr.hit && fh_curr.normal.y < 0.95f && fh_curr.normal.y > 0.001f;
     Vec3 floor_normal_curr = on_ramp_curr ? fh_curr.normal : (Vec3){ 0.0f, 1.0f, 0.0f };
+
+    /* Log ramp transition */
+    if (en_suelo_prev && p->en_suelo && on_ramp_curr != on_ramp_prev) {
+        phys_log_ramp_transition(p, on_ramp_curr, on_ramp_curr ? &fh_curr.normal : &fh_prev.normal);
+    }
+
+    /* Verbose tick logging */
+    phys_log_tick(p, &input, &fh_curr, on_ramp_curr, &floor_normal_curr,
+                  on_ramp_predictive, &ramp_normal_predictive,
+                  &wish_dir, wish_speed,
+                  en_suelo_prev, debe_saltar, puede_saltar, dt);
 
     /* ── Determinar wish_dir original (horizontal) y wish_speed ─────────── */
     Vec3 wish_dir_input = input.wish_dir;  // horizontal only
@@ -241,6 +265,10 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         }
 
         if (debe_saltar && puede_saltar) {
+            bool from_coyote = !p->en_suelo && p->coyote_ticks > 0;
+            bool from_buffer = p->jump_buffer_ticks > 0;
+            phys_log_jump(p, from_coyote, from_buffer);
+
             p->vel.y             = JUMP_IMPULSE;
             p->en_suelo          = false;
             p->jump_buffer_ticks = 0;
@@ -321,7 +349,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         f32 vel_xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
         if (vel_xz > 0.01f) {
             Vec3 move_dir = { p->vel.x / vel_xz, 0.0f, p->vel.z / vel_xz };
+            f32 pos_y_before = p->pos.y;
             collision_intentar_step_up(map, bp, &p->pos, &move_dir, true, p->crouch_height);
+            f32 delta_y = p->pos.y - pos_y_before;
+            if (delta_y > 0.5f) {
+                phys_log_step_up(p, delta_y, &move_dir);
+            }
         }
     }
 
@@ -343,9 +376,15 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         moving_into_floor = (vn <= 0.05f);
     }
 
+    bool was_on_ground = en_suelo_prev;
     if (floor_hit && p->pos.y <= floor_y + SV_STEPSIZE && moving_into_floor) {
         p->pos.y = floor_y;
         p->en_suelo = true;
+
+        /* Log landing if we weren't on ground before */
+        if (!was_on_ground) {
+            phys_log_land(p, p->vel.y);  // p->vel.y is impact velocity before zeroing
+        }
 
         /* En rampa (y en suelo): velocity debe quedar horizontal (Y=0).
          * El snap al suelo maneja la posición vertical; proyectar velocity
@@ -376,13 +415,14 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     }
 
     /* ── Coyote time: actualizar basado en transición de suelo ──────────── */
-    static bool en_suelo_prev = true;
-    if (en_suelo_prev && !p->en_suelo) {
+    static bool en_suelo_prev_static = true;
+    if (en_suelo_prev_static && !p->en_suelo) {
         p->coyote_ticks = COYOTE_TICKS;
+        phys_log_coyote(p, p->coyote_ticks);
     } else if (p->coyote_ticks > 0) {
         p->coyote_ticks--;
     }
-    en_suelo_prev = p->en_suelo;
+    en_suelo_prev_static = p->en_suelo;
 
     /* ── Contador de suelo para la ventana de gracia del bhop ───────────── */
     if (p->en_suelo) {
