@@ -205,12 +205,6 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         phys_log_ramp_transition(p, on_ramp_curr, on_ramp_curr ? &fh_curr.normal : &fh_prev.normal);
     }
 
-    /* Verbose tick logging */
-    phys_log_tick(p, &input, &fh_curr, on_ramp_curr, &floor_normal_curr,
-                  on_ramp_predictive, &ramp_normal_predictive,
-                  &wish_dir, wish_speed,
-                  en_suelo_prev, debe_saltar, puede_saltar, dt);
-
     /* ── Determinar wish_dir original (horizontal) y wish_speed ─────────── */
     Vec3 wish_dir_input = input.wish_dir;  // horizontal only
     bool tiene_wish = vec3_len(wish_dir_input) > 0.001f;
@@ -257,6 +251,12 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
             tiene_wish = false;
         }
     }
+
+    /* Verbose tick logging (now all variables are declared) */
+    phys_log_tick(p, &input, &fh_curr, on_ramp_curr, &floor_normal_curr,
+                  on_ramp_predictive, &ramp_normal_predictive,
+                  &wish_dir, wish_speed,
+                  en_suelo_prev, debe_saltar, puede_saltar, dt);
 
     /* ── Manejo de salto ────────────────────────────────────────────────── */
     if (p->en_suelo) {
