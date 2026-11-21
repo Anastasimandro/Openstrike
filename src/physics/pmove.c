@@ -218,16 +218,18 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         }
     }
 
-    /* ── Si en rampa (actual o predictiva), proyectar wish_dir al plano ─── */
+    /* ── Si en rampa (actual o predictiva), proyectar wish_dir al plano ─── *
+     * Mantener componente Y para que la aceleración tenga componente vertical *
+     * en subidas (GoldSrc: wish_dir 2D, pero velocity se proyecta a plano). *
+     * Aquí aceleramos en 3D con wish_dir proyectado al plano.               */
     Vec3 ramp_normal_for_wish = on_ramp_curr ? floor_normal_curr : (on_ramp_predictive ? ramp_normal_predictive : (Vec3){0,1,0});
     bool use_ramp_wish = on_ramp_curr || on_ramp_predictive;
     if (use_ramp_wish && tiene_wish) {
         wish_dir = vec3_project_on_plane(wish_dir, ramp_normal_for_wish);
-        wish_dir.y = 0.0f;
-        f32 len = sqrtf(wish_dir.x * wish_dir.x + wish_dir.z * wish_dir.z);
+        /* NO zero Y - mantener componente vertical para subir rampas */
+        f32 len = vec3_len(wish_dir);
         if (len > 0.001f) {
-            wish_dir.x /= len;
-            wish_dir.z /= len;
+            wish_dir = vec3_scale(wish_dir, 1.0f / len);
         } else {
             tiene_wish = false;
         }
