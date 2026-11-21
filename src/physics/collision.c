@@ -412,37 +412,99 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
     return best;
 }
 
-/* Predictive ramp detection using swept capsule.
- * Sweeps capsule DOWN from HIGH above (60u) at lookahead position.
- * Capsule top at impact = floor_y + half_height + radius.
- * For max ramp height 18u + capsule 36u = 54u. Start at 60u to clear all ramps. */
+/* Predictive ramp detection using single raycast down from high above.
+ * Uses a custom broadphase query covering FULL vertical range to ensure
+ * ramp triangles are included (fixes broadphase cell boundary issues). */
 bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
                                           Vec3 pos, Vec3 wish_dir, f32 lookahead,
                                           f32 crouch_height, Vec3 *out_normal, f32 *out_hit_y)
 {
+    (void)crouch_height;
     if (!map || !map->cargado || map->face_count == 0) return false;
     if (wish_dir.x == 0.0f && wish_dir.z == 0.0f) return false;
 
     f32 radius = RADIO_JUGADOR;
-    f32 capsule_h = crouch_height - 2.0f * radius;
-    if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
-    f32 half_height = capsule_h * 0.5f;
-
-    /* Sweep DOWN from high above (60u) at lookahead position.
-     * Capsule top at start = start_y + half_height + radius = 60 + 20 + 16 = 96.
-     * At max ramp height 18, capsule center at impact = 18 + 36 = 54 < 60. Safe. */
-    const f32 START_HEIGHT = 60.0f;
     f32 lookahead_x = pos.x + wish_dir.x * lookahead;
     f32 lookahead_z = pos.z + wish_dir.z * lookahead;
-    
-    Vec3 start = { lookahead_x, pos.y + START_HEIGHT, lookahead_z };
-    Vec3 end = { lookahead_x, pos.y - 20.0f, lookahead_z };
 
-    SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
+    /* Single ray from 60u above down to -20u (covers max ramp height 18 + margin) */
+    Vec3 origin = { lookahead_x, pos.y + 60.0f, lookahead_z };
+    Vec3 dir = { 0.0f, -1.0f, 0.0f };
+    f32 max_dist = 80.0f;
 
-    if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN && hit.normal.y < 0.95f) {
-        if (out_normal) *out_normal = hit.normal;
-        if (out_hit_y) *out_hit_y = hit.pos.y - half_height - radius;  // convert capsule center to feet y
+    /* Broadphase query covering FULL vertical range at lookahead position.
+     * This ensures ramp triangles are found even at cell boundaries. */
+    u32 face_count = 0;
+    u16 face_indices[BP_TEMP_MAX];
+
+    if (bp && bp->built) {
+        Vec3 mins = { lookahead_x - radius, pos.y - max_dist, lookahead_z - radius };
+        Vec3 maxs = { lookahead_x + radius, pos.y + 60.0f + 2.0f, lookahead_z + radius };
+        face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
+    } else {
+        face_count = map->face_count;
+    }
+
+    f32 best_t = max_dist + 1e-4f;
+    Vec3 best_n = { 0.0f, 1.0f, 0.0f };
+    f32 best_hit_y = -1e9f;
+    bool hit_any = false;
+
+    for (u32 fi_idx = 0; fi_idx < face_count; fi_idx++) {
+        u32 fi = (bp && bp->built) ? face_indices[fi_idx] : fi_idx;
+        if (fi >= (u32)map->face_count) continue;
+
+        const MapFace *face = &map->faces[fi];
+        u32 base = face->vertex_start;
+        u32 count = face->vertex_count;
+
+        for (u32 ti = 0; ti + 2 < count; ti += 3) {
+            const MapVertex *va = &map->vertices[base + ti + 0];
+            const MapVertex *vb = &map->vertices[base + ti + 1];
+            const MapVertex *vc = &map->vertices[base + ti + 2];
+
+            Vec3 v0 = { va->pos[0], va->pos[1], va->pos[2] };
+            Vec3 v1 = { vb->pos[0], vb->pos[1], vb->pos[2] };
+            Vec3 v2 = { vc->pos[0], vc->pos[1], vc->pos[2] };
+
+            if (triangle_is_degenerate(v0, v1, v2)) continue;
+
+            f32 t;
+            Vec3 n;
+            if (collision_ray_triangulo(origin, dir, v0, v1, v2, &t, &n)) {
+                if (t >= 1e-4f && t <= max_dist && n.y > SUELO_NORMAL_Y_MIN) {
+                    f32 hit_y = origin.y - t;
+                    /* Prefer ramps (n.y < 0.95) over flat floor */
+                    bool better = false;
+                    bool hit_is_ramp = n.y < 0.95f;
+                    bool best_is_flat = best_n.y > 0.95f;
+
+                    if (!hit_any) {
+                        better = true;
+                    } else if (hit_is_ramp && best_is_flat) {
+                        if (hit_y >= best_hit_y - 10.0f) better = true;
+                    } else if (hit_is_ramp && best_n.y < 0.95f) {
+                        if (hit_y > best_hit_y + 1e-4f) better = true;
+                    } else if (!hit_is_ramp && best_is_flat) {
+                        if (hit_y > best_hit_y + 1e-4f) better = true;
+                    } else if (!hit_is_ramp && best_n.y < 0.95f) {
+                        if (hit_y > best_hit_y + 1e-4f) better = true;
+                    }
+
+                    if (better) {
+                        best_t = t;
+                        best_n = n;
+                        best_hit_y = hit_y;
+                        hit_any = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (hit_any && best_n.y < 0.95f) {
+        if (out_normal) *out_normal = best_n;
+        if (out_hit_y) *out_hit_y = best_hit_y;
         return true;
     }
 
