@@ -313,7 +313,8 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
 
     /* ── Predictive override para snap ──────────────────────────────────── *
      * Si detectamos rampa adelante, calcular su altura en la posición       *
-     * actual del jugador y usarla si está por encima del suelo detectado.   */
+     * SIGUIENTE del jugador (tras movimiento horizontal de este tick)       *
+     * y usarla si está por encima del suelo detectado.                      */
     f32 floor_y = fh.y;
     Vec3 floor_normal = fh.normal;
     bool floor_hit = fh.hit;
@@ -321,11 +322,18 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     if (on_ramp_predictive && fh.hit) {
         Vec3 n = ramp_normal_predictive;
         if (fabsf(n.y) > 1e-4f) {
-            /* Calcular altura de la rampa en posición actual del jugador.
-             * next_pos.y ahora tiene la altura real de la rampa en el punto lookahead. */
-            f32 ramp_y_at_player = next_pos.y - (n.x * (p->pos.x - next_pos.x) + n.z * (p->pos.z - next_pos.z)) / n.y;
-            if (ramp_y_at_player > fh.y) {  // rampa por encima del suelo plano
-                floor_y = ramp_y_at_player;
+            /* Estimar posición horizontal después de este tick:
+             * wish_dir proyectado a rampa * wish_speed * dt.
+             * Usar wish_dir ya proyectado (tiene componente Y en rampa). */
+            Vec3 predicted_next = p->pos;
+            if (tiene_wish) {
+                predicted_next.x += wish_dir.x * wish_speed * dt;
+                predicted_next.z += wish_dir.z * wish_speed * dt;
+            }
+            /* Calcular altura de la rampa en esa posición predicha */
+            f32 ramp_y_at_next = next_pos.y - (n.x * (predicted_next.x - next_pos.x) + n.z * (predicted_next.z - next_pos.z)) / n.y;
+            if (ramp_y_at_next > fh.y) {  // rampa por encima del suelo plano
+                floor_y = ramp_y_at_next;
                 floor_normal = n;
                 floor_hit = true;
             }
