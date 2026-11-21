@@ -508,7 +508,7 @@ static bool raycast_floor(const Map *map, const Broadphase *bp, const u16 *face_
 }
 
 /* ── Raycast-based floor detection (GoldSrc style) ───────────────────────── *
- * Uses 5 rays from feet level: center + 4 corners at radius*0.7.
+ * Uses 5 rays from slightly above feet level: center + 4 corners at radius*0.7.
  * More robust than swept capsule for triangle soup maps with sloped surfaces. */
 static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Vec3 pos, f32 radius)
 {
@@ -517,17 +517,19 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
 
     if (!map || !map->cargado || map->face_count == 0) return best;
 
-    /* 5 ray origins: center + 4 corners of player footprint */
+    /* 5 ray origins: center + 4 corners of player footprint.
+     * Start slightly above feet (2 units) to avoid t=0 hits on current surface. */
+    const f32 RAY_START_OFFSET = 2.0f;
     f32 ray_radius = radius * 0.7f;
     Vec3 origins[5] = {
-        { pos.x, pos.y, pos.z },                    // center
-        { pos.x + ray_radius, pos.y, pos.z },       // +x
-        { pos.x - ray_radius, pos.y, pos.z },       // -x
-        { pos.x, pos.y, pos.z + ray_radius },       // +z
-        { pos.x, pos.y, pos.z - ray_radius }        // -z
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z },                    // center
+        { pos.x + ray_radius, pos.y + RAY_START_OFFSET, pos.z },       // +x
+        { pos.x - ray_radius, pos.y + RAY_START_OFFSET, pos.z },       // -x
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z + ray_radius },       // +z
+        { pos.x, pos.y + RAY_START_OFFSET, pos.z - ray_radius }        // -z
     };
 
-    f32 max_dist = SV_STEPSIZE + radius + 2.0f;  // slightly more than step size
+    f32 max_dist = SV_STEPSIZE + radius + RAY_START_OFFSET + 2.0f;  // cover step size + offset
     Vec3 dir = { 0.0f, -1.0f, 0.0f };
 
     u32 face_count = 0;
@@ -535,7 +537,7 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
 
     if (bp && bp->built) {
         Vec3 mins = { pos.x - radius, pos.y - max_dist, pos.z - radius };
-        Vec3 maxs = { pos.x + radius, pos.y + 2.0f, pos.z + radius };
+        Vec3 maxs = { pos.x + radius, pos.y + RAY_START_OFFSET + 2.0f, pos.z + radius };
         face_count = broadphase_query_aabb(bp, mins, maxs, face_indices, BP_TEMP_MAX);
     } else {
         face_count = map->face_count;
@@ -569,7 +571,7 @@ static FloorHit raycast_floor_detection(const Map *map, const Broadphase *bp, Ve
                 f32 t;
                 Vec3 n;
                 if (collision_ray_triangulo(origin, dir, v0, v1, v2, &t, &n)) {
-                    if (t >= 0.0f && t <= max_dist && n.y > SUELO_NORMAL_Y_MIN) {
+                    if (t >= 1e-4f && t <= max_dist && n.y > SUELO_NORMAL_Y_MIN) {
                         f32 hit_y = origin.y - t;
                         /* Tie-breaker: prefer higher hit_y.
                          * Strongly prefer ramps (n.y < 0.95) over flat floors (n.y > 0.95)
