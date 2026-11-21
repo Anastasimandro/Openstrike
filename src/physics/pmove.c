@@ -208,7 +208,9 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
     Vec3 next_pos = p->pos;
 
     if (p->en_suelo && !on_ramp_curr && tiene_wish) {
-        f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
+        /* Use longer lookahead (8 ticks) so next_pos is deeper on the ramp
+         * where raycast reliably detects it (ramp height > 5u). */
+        f32 lookahead = wish_speed * dt * 8.0f;  // ~8 ticks ahead
         next_pos = (Vec3){ p->pos.x + wish_dir_input.x * lookahead, p->pos.y, p->pos.z + wish_dir_input.z * lookahead };
         fh_ramp_at_next = collision_detectar_suelo(map, bp, next_pos, p->crouch_height);
         
