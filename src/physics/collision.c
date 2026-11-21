@@ -740,10 +740,9 @@ bool collision_intentar_step_up(const Map *map, const Broadphase *bp, Vec3 *pos,
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
-    /* Step-up triggers on any walkable surface (normal.y > 0.7) including ramps.
-     * On ramps, this helps the player climb when wall collision slide loses
-     * horizontal speed. The sweep forward+up catches the ramp surface ahead. */
-    const f32 STEP_UP_NORMAL_Y_MIN = 0.7f;  // any walkable surface
+    /* Step-up should only trigger on discrete steps (flat tops, normal.y ≈ 1),
+     * NOT on continuous slopes (ramps). Ramps are handled by floor snap. */
+    const f32 STEP_UP_NORMAL_Y_MIN = 0.95f;  // flat enough to be a "step top"
     if (hit.hit && hit.normal.y > STEP_UP_NORMAL_Y_MIN) {
         /* hit.pos is capsule center at impact; convert back to feet */
         f32 ground_y = hit.pos.y - capsule_half_h;
