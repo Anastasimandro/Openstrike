@@ -205,13 +205,15 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
      * USA swept capsule (más fiable que raycast para detectar rampas).     */
     bool on_ramp_predictive = false;
     Vec3 ramp_normal_predictive = floor_normal_curr;
+    f32 ramp_hit_y_at_lookahead = 0.0f;
     Vec3 next_pos = p->pos;
 
     if (p->en_suelo && !on_ramp_curr && tiene_wish) {
         f32 lookahead = wish_speed * dt * 4.0f;  // ~4 ticks ahead
         next_pos = (Vec3){ p->pos.x + wish_dir_input.x * lookahead, p->pos.y, p->pos.z + wish_dir_input.z * lookahead };
-        if (collision_detectar_rampa_predictiva(map, bp, p->pos, wish_dir_input, lookahead, p->crouch_height, &ramp_normal_predictive)) {
+        if (collision_detectar_rampa_predictiva(map, bp, p->pos, wish_dir_input, lookahead, p->crouch_height, &ramp_normal_predictive, &ramp_hit_y_at_lookahead)) {
             on_ramp_predictive = true;
+            next_pos.y = ramp_hit_y_at_lookahead;  // use actual ramp height at lookahead
         }
     }
 
@@ -320,7 +322,7 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Bro
         Vec3 n = ramp_normal_predictive;
         if (fabsf(n.y) > 1e-4f) {
             /* Calcular altura de la rampa en posición actual del jugador.
-             * Usamos next_pos como punto de referencia de la rampa. */
+             * next_pos.y ahora tiene la altura real de la rampa en el punto lookahead. */
             f32 ramp_y_at_player = next_pos.y - (n.x * (p->pos.x - next_pos.x) + n.z * (p->pos.z - next_pos.z)) / n.y;
             if (ramp_y_at_player > fh.y) {  // rampa por encima del suelo plano
                 floor_y = ramp_y_at_player;

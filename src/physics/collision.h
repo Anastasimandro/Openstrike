@@ -128,10 +128,11 @@ bool collision_check_ceiling(const Map *map, const Broadphase *bp, Vec3 pos, f32
 
 /* Predictive ramp detection using swept capsule (more reliable than raycast
  * for detecting ramps at lookahead positions).
- * Sweeps capsule from current pos to pos + wish_dir*lookahead (horizontal) + small down.
- * Returns true if ramp detected, fills out_normal with ramp normal. */
+ * Sweeps capsule DOWN from HIGH above (20u) at lookahead position.
+ * Returns true if ramp detected, fills out_normal with ramp normal,
+ * and out_hit_y with floor y at lookahead position. */
 bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
                                           Vec3 pos, Vec3 wish_dir, f32 lookahead,
-                                          f32 crouch_height, Vec3 *out_normal);
+                                          f32 crouch_height, Vec3 *out_normal, f32 *out_hit_y);
 
 #endif /* OPENSTRIKE_COLLISION_H */

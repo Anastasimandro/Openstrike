@@ -413,11 +413,12 @@ SweepHit collision_sweep_capsule(const Map *map, const Broadphase *bp,
 }
 
 /* Predictive ramp detection using swept capsule.
- * Sweeps capsule from current pos to pos + wish_dir*lookahead (horizontal) + small down.
- * Returns true if ramp detected, fills out_normal with ramp normal. */
+ * Sweeps capsule DOWN from HIGH above (20u) at lookahead position.
+ * Returns true if ramp detected, fills out_normal with ramp normal,
+ * and out_hit_y with floor y at lookahead position. */
 bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
                                           Vec3 pos, Vec3 wish_dir, f32 lookahead,
-                                          f32 crouch_height, Vec3 *out_normal)
+                                          f32 crouch_height, Vec3 *out_normal, f32 *out_hit_y)
 {
     if (!map || !map->cargado || map->face_count == 0) return false;
     if (wish_dir.x == 0.0f && wish_dir.z == 0.0f) return false;
@@ -427,17 +428,21 @@ bool collision_detectar_rampa_predictiva(const Map *map, const Broadphase *bp,
     if (capsule_h < CAPSULE_MIN_HEIGHT) capsule_h = CAPSULE_MIN_HEIGHT;
     f32 half_height = capsule_h * 0.5f;
 
-    Vec3 start = pos;
-    Vec3 end = {
-        pos.x + wish_dir.x * lookahead,
-        pos.y - 2.0f,
-        pos.z + wish_dir.z * lookahead
-    };
+    /* Sweep DOWN from high above (20u) at lookahead position.
+     * This mimics the raycast approach but with capsule for better triangle soup handling.
+     * Start: lookahead horizontal, 20 units above current pos
+     * End: lookahead horizontal, 20 units below current pos (covers max ramp height) */
+    f32 lookahead_x = pos.x + wish_dir.x * lookahead;
+    f32 lookahead_z = pos.z + wish_dir.z * lookahead;
+    
+    Vec3 start = { lookahead_x, pos.y + 20.0f, lookahead_z };
+    Vec3 end = { lookahead_x, pos.y - 20.0f, lookahead_z };
 
     SweepHit hit = collision_sweep_capsule(map, bp, start, end, radius, half_height, false);
 
     if (hit.hit && hit.normal.y > SUELO_NORMAL_Y_MIN && hit.normal.y < 0.95f) {
         if (out_normal) *out_normal = hit.normal;
+        if (out_hit_y) *out_hit_y = hit.pos.y;  // feet y at impact
         return true;
     }
 
