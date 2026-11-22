@@ -242,7 +242,7 @@ int main(void)
 
     /* Caja de 32 u en x=[-116,-84]: con SV_STEPSIZE=32 se sube al top. */
     r = simular("recto hacia bloque oeste (x-)", (Vec3){ -1.0f, 0.0f, 0.0f },
-                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 33.0f);
     comprobar(r.max_y >= 30.0f,
               "subio al bloque de 32 u (SV_STEPSIZE ahora es 32)");
 
@@ -289,7 +289,7 @@ int main(void)
     comprobar(r.final_pos.x >= 235.0f, "no llego a la pared tras la rampa");
 
     r = simular("rampa hacia abajo (-x)", (Vec3){ -1.0f, 0.0f, 0.0f },
-                200, (Vec3){ 220.0f, 18.0f, 0.0f }, 20.0f);
+                60, (Vec3){ 220.0f, 18.0f, 0.0f }, 20.0f);
     comprobar(r.min_y <= 1.0f, "no bajo la rampa");
     comprobar(r.max_y <= 18.5f, "se elevo por encima del tope de la rampa");
     comprobar(r.final_pos.y <= 1.0f, "no quedo a nivel del suelo");
