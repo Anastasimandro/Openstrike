@@ -23,15 +23,15 @@
 
 /* ── Configuración del grid 3D uniforme ───────────────────────────────────── *
  * Mundo objetivo: mapas CS estilo 512×512×192 unidades (sala_prueba).
- * Grid: 32 × 32 × 16 celdas = 16384 celdas totales.
- * Tamaño celda: 16 u en X/Z, 12 u en Y → cubre 512×512×192 exacto.
+ * Grid: 32 × 16 × 32 celdas = 16384 celdas totales.
+ * Tamaño celda: 16 u en X/Z, 12 u en Y → cubre 512×192×512 exacto.
  * Cada cara del mapa se registra en las celdas que solapa su AABB.
  * Consulta: dadas min/max de la query, se itera solo celdas relevantes.       *
  * ─────────────────────────────────────────────────────────────────────────── */
 
 #define BP_GRID_X 32
-#define BP_GRID_Y 32
-#define BP_GRID_Z 16
+#define BP_GRID_Y 16
+#define BP_GRID_Z 32
 #define BP_CELL_SIZE_X 16.0f
 #define BP_CELL_SIZE_Y 12.0f
 #define BP_CELL_SIZE_Z 16.0f

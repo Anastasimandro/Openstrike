@@ -57,7 +57,6 @@ static InputState    g_input   = {0};
 static Camera        g_camara  = {0};
 static PhysPlayer    g_player;
 static Map           g_map;                     /* ~2.3 MB en BSS             */
-static Broadphase    g_broadphase;              /* broadphase de colisión      */
 static bool          g_espacio_anterior = false; /* flanco de subida de SPACE */
 
 /* ── Funciones ────────────────────────────────────────────────────────────── */
@@ -114,10 +113,6 @@ static int init(void)
         fprintf(stderr, "map_cargar failed\n");
         return 0;
     }
-
-    /* Construir broadphase tras cargar el mapa */
-    broadphase_build(&g_broadphase, &g_map);
-    broadphase_debug_stats(&g_broadphase);
 
     if (!renderer_cargar_mapa(&g_map)) {
         fprintf(stderr, "renderer_cargar_mapa failed\n");
@@ -231,7 +226,7 @@ static void update(f32 dt)
     phys_input.caminar     = g_input.caminar;
 
     /* Tick de física con detección de suelo real */
-    phys_tick(&g_player, phys_input, &g_map, dt, &g_broadphase);
+    phys_tick(&g_player, phys_input, &g_map, dt);
 
     /* Consumo del salto — evita doble salto si el accumulator hace 2 ticks */
     g_input.saltar = false;

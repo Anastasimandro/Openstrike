@@ -8,7 +8,7 @@
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
@@ -18,8 +18,7 @@
 
 #include "types.h"
 #include "renderer/math.h"
-#include "collision.h"
-#include "broadphase.h"
+#include "collision.h"    /* FloorHit, collision_detectar_suelo; trae map.h transitivamente */
 
 /* ── Constantes de movimiento — exactas CS:GO ─────────────────────────────── */
 #define SV_GRAVITY        800.0f
@@ -36,7 +35,6 @@
                                    /* saltar dentro de la ventana (~94 ms)     */
                                    /* conserva la velocidad — timing exigente  */
                                    /* pero aprendible (sin autobhop)           */
-#define SV_STEPSIZE        18.0f
 #define SPEED_RUN         250.0f
 #define SPEED_WALK        130.0f
 #define SPEED_DUCK         85.0f
@@ -89,9 +87,8 @@ typedef struct {
 void phys_player_init(PhysPlayer *p, Vec3 spawn_pos);
 
 /* Tick completo de física. Llamar exactamente a 64 Hz (dt = 1/64 = 0.015625).
- * map se usa para detectar el suelo real — pasar &g_map siempre.
- * bp: broadphase construido (puede ser NULL → fallback O(N)). */
-void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt, const Broadphase *bp);
+ * map se usa para detectar el suelo real — pasar &g_map siempre.             */
+void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt);
 
 /* Retorna altura de vista interpolada según estado de agachado. */
 f32  phys_view_height(const PhysPlayer *p);

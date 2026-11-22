@@ -8,57 +8,100 @@
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-/* Test de física sin SDL: simula phys_tick caminando contra las paredes de
- * sala_prueba y hace fallar la build si el jugador cruza los límites de la
- * sala (±256) o termina más cerca de la pared que su radio.
+/* Test de física sin SDL: simula phys_tick contra sala_prueba.
+ * Comprueba tres cosas que la regresión de rampas rompió:
+ *   1. El jugador nunca sale de la sala ni atraviesa paredes.
+ *   2. No trepa bloques que superan SV_STEPSIZE (18 u): la caja de 32 u
+ *      en x=[-116,-84] debe bloquear, no elevar al jugador.
+ *   3. Las rampas se suben/bajan pegadas al suelo, sin volar ni deslizarse
+ *      solas cuando el jugador está quieto.
  * Compilación y ejecución: ver el paso "Test físico" en build.yml (linux). */
 
 #include <stdio.h>
+#include <math.h>
 #include "types.h"
 #include "physics/pmove.h"
-#include "physics/broadphase.h"
 
 /* Map ≈ 2.3 MB — SIEMPRE global (BSS), nunca en el stack */
 static Map g_map_test;
-static Broadphase g_broadphase;       /* definición real para test (no extern) */
 
 static int g_fallos = 0;
 
+typedef struct {
+    f32  min_y;
+    f32  max_y;
+    Vec3 final_pos;
+    bool ok;
+} SimResult;
+
+static void comprobar(bool condicion, const char *mensaje)
+{
+    if (!condicion) {
+        printf("  FALLO: %s\n", mensaje);
+        g_fallos++;
+    }
+}
+
 /* Simula 'ticks' ticks caminando con wish fijo y comprueba que el jugador
- * nunca sale de la sala ni se pega a la pared más que su radio. */
-static void simular(const char *nombre, Vec3 wish, int ticks, Vec3 start_pos)
+ * nunca sale de la sala ni supera y_max_permitido en vertical. */
+static SimResult simular(const char *nombre, Vec3 wish, int ticks,
+                          Vec3 start_pos, f32 y_max_permitido)
 {
     PhysPlayer p;
     phys_player_init(&p, start_pos);
     p.en_suelo = true;
 
     PhysInput in = {0};
-    in.wish_dir  = wish;
-    in.saltar    = false;
+    in.wish_dir    = wish;
+    in.saltar      = false;
     in.saltar_held = false;
-    in.agacharse = false;
-    in.caminar   = false;
+    in.agacharse   = false;
+    in.caminar     = false;
+
+    SimResult r = { start_pos.y, start_pos.y,
+                    { start_pos.x, start_pos.y, start_pos.z }, true };
 
     for (int i = 0; i < ticks; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
 
         if (p.pos.x < -255.0f || p.pos.x > 255.0f ||
             p.pos.z < -255.0f || p.pos.z > 255.0f) {
             printf("FALLO [%s] tick %d: pos=(%.2f, %.2f, %.2f) -- CRUZO la pared\n",
                    nombre, i, p.pos.x, p.pos.y, p.pos.z);
             g_fallos++;
-            return;
+            r.ok = false;
+            break;
         }
+        if (p.pos.y > y_max_permitido + 0.01f) {
+            printf("FALLO [%s] tick %d: pos=(%.2f, %.2f, %.2f) -- Y FUERA DE RANGO\n",
+                   nombre, i, p.pos.x, p.pos.y, p.pos.z);
+            g_fallos++;
+            r.ok = false;
+            break;
+        }
+        if (p.pos.y < -1.0f) {
+            printf("FALLO [%s] tick %d: pos=(%.2f, %.2f, %.2f) -- ATRAVESO EL SUELO\n",
+                   nombre, i, p.pos.x, p.pos.y, p.pos.z);
+            g_fallos++;
+            r.ok = false;
+            break;
+        }
+
+        if (p.pos.y < r.min_y) r.min_y = p.pos.y;
+        if (p.pos.y > r.max_y) r.max_y = p.pos.y;
     }
 
-    printf("OK   [%s] %d ticks -> pos=(%.2f, %.2f, %.2f)\n",
-           nombre, ticks, p.pos.x, p.pos.y, p.pos.z);
+    r.final_pos = p.pos;
+    printf("%s [%s] %d ticks -> pos=(%.2f, %.2f, %.2f) y=[%.2f..%.2f]\n",
+           r.ok ? "OK  " : "FALLO", nombre, ticks,
+           p.pos.x, p.pos.y, p.pos.z, r.min_y, r.max_y);
+    return r;
 }
 
 /* Simula agachado/desagachado y comprueba altura de caja y vista. */
@@ -70,84 +113,98 @@ static void simular_agachado(const char *nombre)
 
     printf("\n--- Test: %s ---\n", nombre);
 
-    /* 1. Estado inicial: de pie */
     PhysInput in = {0};
-    in.wish_dir = (Vec3){ 0.0f, 0.0f, 0.0f };
-    in.saltar = false;
+    in.wish_dir    = (Vec3){ 0.0f, 0.0f, 0.0f };
+    in.saltar      = false;
     in.saltar_held = false;
-    in.agacharse = false;
-    in.caminar = false;
+    in.agacharse   = false;
+    in.caminar     = false;
 
+    /* 1. Estado inicial: de pie */
     for (int i = 0; i < 10; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
     }
     printf("  Inicial (pie): crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
            p.crouch_height, phys_view_height(&p), p.agachado);
-    if (p.crouch_height < 70.0f || p.crouch_height > 72.0f) {
-        printf("  FALLO: altura de pie incorrecta\n");
-        g_fallos++;
-    }
+    comprobar(p.crouch_height >= 70.0f && p.crouch_height <= 72.0f,
+              "altura de pie incorrecta");
 
     /* 2. Agacharse */
     in.agacharse = true;
     for (int i = 0; i < 20; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
     }
     printf("  Agachado: crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
            p.crouch_height, phys_view_height(&p), p.agachado);
-    if (p.crouch_height < 35.0f || p.crouch_height > 37.0f) {
-        printf("  FALLO: altura agachado incorrecta\n");
-        g_fallos++;
-    }
-    if (!p.agachado) {
-        printf("  FALLO: flag agachado no activado\n");
-        g_fallos++;
-    }
+    comprobar(p.crouch_height >= 35.0f && p.crouch_height <= 37.0f,
+              "altura agachado incorrecta");
+    comprobar(p.agachado, "flag agachado no activado");
 
     /* 3. Levantarse */
     in.agacharse = false;
     for (int i = 0; i < 20; i++) {
-        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
     }
     printf("  Levantado: crouch_height=%.2f, view_height=%.2f, agachado=%d\n",
            p.crouch_height, phys_view_height(&p), p.agachado);
-    if (p.crouch_height < 70.0f || p.crouch_height > 72.0f) {
-        printf("  FALLO: altura de pie tras levantarse incorrecta\n");
-        g_fallos++;
-    }
-    if (p.agachado) {
-        printf("  FALLO: flag agachado no desactivado\n");
-        g_fallos++;
-    }
+    comprobar(p.crouch_height >= 70.0f && p.crouch_height <= 72.0f,
+              "altura de pie tras levantarse incorrecta");
+    comprobar(!p.agachado, "flag agachado no desactivado");
 
     /* 4. Agachado rápido (toggle rápido) */
     in.agacharse = true;
-    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
     in.agacharse = false;
-    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
     in.agacharse = true;
-    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+    for (int i = 0; i < 4; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
     in.agacharse = false;
-    for (int i = 0; i < 20; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+    for (int i = 0; i < 20; i++) phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
     printf("  Toggle rapido: crouch_height=%.2f, view_height=%.2f\n",
            p.crouch_height, phys_view_height(&p));
-    if (p.crouch_height < 70.0f || p.crouch_height > 72.0f) {
-        printf("  FALLO: altura tras toggle rapido incorrecta\n");
-        g_fallos++;
-    }
-
-    printf("  OK\n");
+    comprobar(p.crouch_height >= 70.0f && p.crouch_height <= 72.0f,
+              "altura tras toggle rapido incorrecta");
 }
 
 /* Test de agachado bajo techo bajo (no debe poder levantarse). */
 static void simular_techo_bajo(const char *nombre)
 {
-    /* Nota: este test requiere un mapa con techo bajo.
-     * Como sala_prueba tiene techo a 192u, no podemos probarlo aquí.
-     * Se prueba manualmente en runtime. */
+    /* sala_prueba tiene techo a 192 u: no se puede probar aquí. */
     (void)nombre;
     printf("\n--- Test: %s (solo manual, sala_prueba techo alto) ---\n", nombre);
     printf("  SKIP: requiere mapa con techo < 72u\n");
+}
+
+/* Test de salto: altura de pico correcta y sin doble salto. */
+static void simular_salto(const char *nombre)
+{
+    PhysPlayer p;
+    phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
+    p.en_suelo = true;
+
+    PhysInput in = {0};
+    in.wish_dir    = (Vec3){ 0.0f, 0.0f, 0.0f };
+    in.saltar      = true;
+    in.saltar_held = true;
+    in.agacharse   = false;
+    in.caminar     = false;
+
+    f32 max_y = p.pos.y;
+
+    for (int i = 0; i < 120; i++) {
+        if (i > 0) { in.saltar = false; }  /* solo un pulso */
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        if (p.pos.y > max_y) max_y = p.pos.y;
+    }
+
+    printf("\n--- Test: %s ---\n", nombre);
+    printf("  pico y=%.2f, final pos=(%.2f, %.2f, %.2f), en_suelo=%d\n",
+           max_y, p.pos.x, p.pos.y, p.pos.z, p.en_suelo);
+
+    /* v^2/(2g) = 302^2/1600 ≈ 57 u. Sin doble salto no debe pasar de ~80. */
+    comprobar(max_y > 40.0f && max_y < 80.0f, "altura de salto incorrecta");
+    comprobar(p.pos.y <= 0.5f, "no aterrizo tras el salto");
+    comprobar(p.en_suelo, "no quedo en suelo tras aterrizar");
 }
 
 int main(void)
@@ -158,130 +215,106 @@ int main(void)
         return 1;
     }
 
-    /* Construir broadphase para tests */
-    broadphase_build(&g_broadphase, &g_map_test);
-    broadphase_debug_stats(&g_broadphase);
+    printf("=== Tests de colision paredes ===\n");
 
-    printf("=== Tests de colision paredes (11 casos previos) ===\n");
+    /* Paredes de la sala: el jugador debe quedar a 16 u (radio) de la pared.
+     * 320 ticks = 5 s; a 250 u/s recorre 1250 u -- cruza la sala de sobra. */
+    SimResult r;
 
-    /* 320 ticks = 5 s; a 250 u/s recorre 1250 u -- cruza la sala de sobra.
-     * Para tests +x/-x desde origen, el jugador choca con los bloques en x=[±84,±116].
-     * Estos tests verifican que el jugador se detiene correctamente en el bloque. */
-    simular("recto hacia pared norte (z-)",  (Vec3){ 0.0f, 0.0f, -1.0f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("diagonal 45° hacia pared norte",(Vec3){ 0.70710678f, 0.0f, -0.70710678f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("recto hacia pared este (x+)",   (Vec3){ 1.0f, 0.0f, 0.0f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("recto hacia pared sur (z+)",    (Vec3){ 0.0f, 0.0f, 1.0f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("recto hacia pared oeste (x-)",  (Vec3){ -1.0f, 0.0f, 0.0f }, 320, (Vec3){ 0.0f, 0.0f, 0.0f });
+    r = simular("recto hacia pared norte (z-)", (Vec3){ 0.0f, 0.0f, -1.0f },
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.z <= -238.0f && r.final_pos.z >= -242.0f,
+              "no se detuvo en la pared norte");
 
-    /* Casos que reprodujeron el bloqueo irregular (goteo en rozamiento):
-     * movimiento casi paralelo a la pared con leve componente hacia dentro */
-    simular("rasante pared norte (+x, 15° dentro)",
-            vec3_norm((Vec3){ 1.0f, 0.0f, -0.268f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("rasante pared oeste (-z, 15° dentro)",
-            vec3_norm((Vec3){ -0.268f, 0.0f, -1.0f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("rasante pared este (+z, 15° dentro)",
-            vec3_norm((Vec3){ 1.0f, 0.0f, 0.268f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("diagonal suave hacia pared este",
-            vec3_norm((Vec3){ 1.0f, 0.0f, 0.5f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
-    simular("esquina noroeste (45° a ambas paredes)",
-            vec3_norm((Vec3){ -1.0f, 0.0f, -1.0f }), 320, (Vec3){ 0.0f, 0.0f, 0.0f });
+    r = simular("diagonal 45 hacia pared norte",
+                vec3_norm((Vec3){ 1.0f, 0.0f, -1.0f }),
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.z <= -238.0f, "no se detuvo en la pared norte (diagonal)");
 
-    /* Rampa (5b): caminar hacia +x sube la rampa sin saltar (y aumenta).
-     * Iniciar en x=170 (pasado el bloque en x=[84,116]) para llegar a la rampa en x=[180,220]. */
-    simular("rampa hacia arriba (+x)", (Vec3){ 1.0f, 0.0f, 0.0f }, 200, (Vec3){ 170.0f, 0.0f, 0.0f });
+    r = simular("recto hacia pared este (x+)", (Vec3){ 1.0f, 0.0f, 0.0f },
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 20.0f);
+    comprobar(r.final_pos.x >= 235.0f, "no llego a la pared este");
+    comprobar(r.max_y >= 15.0f, "no subio el bloque/rampa de +x");
 
-    printf("\n=== Tests de agachado (5c) ===\n");
+    r = simular("recto hacia pared sur (z+)", (Vec3){ 0.0f, 0.0f, 1.0f },
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.z >= 238.0f, "no se detuvo en la pared sur");
 
-    /* Test de transición agachado/levantado */
-    simular_agachado("transicion agachado/levantado");
+    /* Caja de 32 u en x=[-116,-84]: supera SV_STEPSIZE y NO se debe trepar. */
+    r = simular("recto hacia bloque oeste (x-)", (Vec3){ -1.0f, 0.0f, 0.0f },
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.x >= -70.0f && r.final_pos.x <= -66.0f,
+              "no se detuvo contra el bloque de 32 u (lo trepo o lo atraveso)");
 
-    /* Test de techo baja (solo documentado, no ejecutable sin mapa específico) */
-    simular_techo_bajo("techo bajo bloquea levantarse");
+    /* Movimiento casi paralelo a la pared con leve componente hacia dentro. */
+    r = simular("rasante pared norte (+x, 15 dentro)",
+                vec3_norm((Vec3){ 1.0f, 0.0f, -0.268f }),
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.z <= -238.0f, "no se mantuvo pegado a la pared norte");
 
-    /* Test de movimiento agachado contra paredes */
+    r = simular("rasante pared oeste (-z, 15 dentro)",
+                vec3_norm((Vec3){ -0.268f, 0.0f, -1.0f }),
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.x <= -238.0f, "no se mantuvo pegado a la pared oeste");
+
+    r = simular("rasante pared este (+z, 15 dentro)",
+                vec3_norm((Vec3){ 1.0f, 0.0f, 0.268f }),
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.x >= 238.0f, "no se mantuvo pegado a la pared este");
+
+    r = simular("diagonal suave hacia pared este",
+                vec3_norm((Vec3){ 1.0f, 0.0f, 0.5f }),
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.x >= 238.0f, "no llego a la pared este (diagonal suave)");
+
+    r = simular("esquina noroeste (45 a ambas paredes)",
+                vec3_norm((Vec3){ -1.0f, 0.0f, -1.0f }),
+                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.x <= -238.0f && r.final_pos.z <= -238.0f,
+              "no se detuvo en la esquina noroeste");
+
+    printf("\n=== Tests de rampas (5b) ===\n");
+
+    /* Rampa: x=[180,220], z=[-40,40], y=0->18. Subir y bajar pegada al suelo. */
+    r = simular("rampa hacia arriba (+x)", (Vec3){ 1.0f, 0.0f, 0.0f },
+                200, (Vec3){ 170.0f, 0.0f, 0.0f }, 20.0f);
+    comprobar(r.max_y >= 15.0f && r.max_y <= 20.0f, "no subio la rampa");
+    comprobar(r.final_pos.x >= 235.0f, "no llego a la pared tras la rampa");
+
+    r = simular("rampa hacia abajo (-x)", (Vec3){ -1.0f, 0.0f, 0.0f },
+                200, (Vec3){ 220.0f, 18.0f, 0.0f }, 20.0f);
+    comprobar(r.min_y <= 1.0f, "no bajo la rampa");
+    comprobar(r.max_y <= 18.5f, "se elevo por encima del tope de la rampa");
+    comprobar(r.final_pos.y <= 1.0f, "no quedo a nivel del suelo");
+
+    /* Quieto en la rampa: el suelo lo sostiene, no se desliza solo. */
     {
         PhysPlayer p;
-        phys_player_init(&p, (Vec3){ 170.0f, 0.0f, 0.0f });
-        p.en_suelo = true;
-
-        PhysInput in = {0};
-        in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
-        in.saltar = false;
-        in.saltar_held = false;
-        in.agacharse = true;  /* AGACHADO */
-        in.caminar = false;
-
-        for (int i = 0; i < 320; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
-        }
-        printf("\n--- Test: movimiento agachado contra pared este ---\n");
-        printf("  pos=(%.2f, %.2f, %.2f), crouch_height=%.2f\n",
-               p.pos.x, p.pos.y, p.pos.z, p.crouch_height);
-        if (p.pos.x < -255.0f || p.pos.x > 255.0f) {
-            printf("  FALLO: cruzo pared agachado\n");
-            g_fallos++;
-        } else {
-            printf("  OK\n");
-        }
-    }
-
-    /* Test de step-up agachado (debe funcionar igual) */
-    {
-        PhysPlayer p;
-        phys_player_init(&p, (Vec3){ 170.0f, 0.0f, 0.0f });
-        p.en_suelo = true;
-
-        PhysInput in = {0};
-        in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
-        in.saltar = false;
-        in.saltar_held = false;
-        in.agacharse = true;
-        in.caminar = false;
-
-        for (int i = 0; i < 200; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
-        }
-        printf("\n--- Test: step-up en rampa agachado ---\n");
-        printf("  pos=(%.2f, %.2f, %.2f), crouch_height=%.2f\n",
-               p.pos.x, p.pos.y, p.pos.z, p.crouch_height);
-        if (p.pos.y > 1.0f) {  /* subió la rampa */
-            printf("  OK (subio rampa agachado)\n");
-        } else {
-            printf("  INFO: no subio rampa (esperado si no hay step-up en ruta)\n");
-        }
-    }
-
-    /* Test: gravedad tangencial en rampa (quieto se desliza cuesta abajo) */
-    {
-        PhysPlayer p;
-        /* Rampa en sala_prueba: x=[180,220], z=[-40,40], y=0->18.
-         * En x=200, z=0, altura de rampa = 9u. Poner jugador en y=9 (sobre la rampa). */
         phys_player_init(&p, (Vec3){ 200.0f, 9.0f, 0.0f });
         p.en_suelo = true;
 
         PhysInput in = {0};
-        in.wish_dir = (Vec3){ 0.0f, 0.0f, 0.0f };  /* SIN input */
-        in.saltar = false;
-        in.saltar_held = false;
+        in.wish_dir = (Vec3){ 0.0f, 0.0f, 0.0f };
         in.agacharse = false;
         in.caminar = false;
 
-        f32 y_inicial = p.pos.y;
-        for (int i = 0; i < 300; i++) {  /* ~5 segundos */
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+        for (int i = 0; i < 300; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
         }
-        printf("\n--- Test: gravedad tangencial en rampa (quieto) ---\n");
-        printf("  pos inicial y=%.2f -> final y=%.2f (delta=%.2f)\n",
-               y_inicial, p.pos.y, p.pos.y - y_inicial);
-        if (p.pos.y < y_inicial - 5.0f) {  /* debe haber bajado al menos 5 unidades */
-            printf("  OK (se deslizo cuesta abajo por gravedad tangencial)\n");
-        } else {
-            printf("  FALLO: no se deslizo cuesta abajo (gravedad tangencial rota)\n");
-            g_fallos++;
-        }
+        printf("\n--- Test: quieto en rampa ---\n");
+        printf("  pos=(%.2f, %.2f, %.2f), en_suelo=%d\n",
+               p.pos.x, p.pos.y, p.pos.z, p.en_suelo);
+        comprobar(fabsf(p.pos.y - 9.0f) <= 1.0f, "se deslizo solo en la rampa");
+        comprobar(fabsf(p.pos.x - 200.0f) <= 1.0f, "se movio solo en la rampa");
+        comprobar(p.en_suelo, "dejo de estar en suelo estando quieto en la rampa");
     }
 
-    /* Test: step-up usa dirección de velocidad (no wish_dir) */
+    printf("\n=== Tests de agachado (5c) ===\n");
+
+    simular_agachado("transicion agachado/levantado");
+    simular_techo_bajo("techo bajo bloquea levantarse");
+
+    /* Movimiento agachado por la rampa. */
     {
         PhysPlayer p;
         phys_player_init(&p, (Vec3){ 170.0f, 0.0f, 0.0f });
@@ -289,80 +322,46 @@ int main(void)
 
         PhysInput in = {0};
         in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
-        in.saltar = false;
-        in.saltar_held = false;
-        in.agacharse = false;
-        in.caminar = false;
+        in.agacharse = true;
 
-        /* Mover hacia la rampa y subir */
-        for (int i = 0; i < 100; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+        f32 max_y = p.pos.y;
+        for (int i = 0; i < 320; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            if (p.pos.y > max_y) max_y = p.pos.y;
         }
-        printf("\n--- Test: step-up en rampa (vel dir) ---\n");
-        printf("  pos=(%.2f, %.2f, %.2f)\n", p.pos.x, p.pos.y, p.pos.z);
-        if (p.pos.y > 10.0f) {  /* subió la rampa completa (18u) */
-            printf("  OK (step-up funciono en rampa)\n");
-        } else {
-            printf("  INFO: pos y=%.2f (rampa sube a 18u)\n", p.pos.y);
-        }
+        printf("\n--- Test: movimiento agachado por rampa ---\n");
+        printf("  pos=(%.2f, %.2f, %.2f), crouch_height=%.2f, pico=%.2f\n",
+               p.pos.x, p.pos.y, p.pos.z, p.crouch_height, max_y);
+        comprobar(p.pos.x >= 235.0f, "agachado no llego a la pared este");
+        comprobar(max_y >= 15.0f && max_y <= 20.0f, "agachado no subio la rampa");
+        comprobar(p.crouch_height >= 35.0f && p.crouch_height <= 37.0f,
+                  "altura agachado incorrecta en movimiento");
     }
 
-    /* Test: subir rampa caminando (debe ser suave, sin saltos) */
+    /* Step-up agachado: debe subir el bloque de 16 u igual que de pie. */
     {
         PhysPlayer p;
-        phys_player_init(&p, (Vec3){ 170.0f, 0.0f, 0.0f });  /* antes de la rampa */
+        phys_player_init(&p, (Vec3){ 0.0f, 0.0f, 0.0f });
         p.en_suelo = true;
 
         PhysInput in = {0};
         in.wish_dir = (Vec3){ 1.0f, 0.0f, 0.0f };
-        in.saltar = false;
-        in.saltar_held = false;
-        in.agacharse = false;
-        in.caminar = false;
+        in.agacharse = true;
 
-        f32 y_inicial = p.pos.y;
-        for (int i = 0; i < 100; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
+        f32 max_y = p.pos.y;
+        for (int i = 0; i < 320; i++) {
+            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+            if (p.pos.y > max_y) max_y = p.pos.y;
         }
-        printf("\n--- Test: subir rampa caminando (+x) ---\n");
-        printf("  pos inicial y=%.2f -> final y=%.2f (delta=%.2f)\n",
-               y_inicial, p.pos.y, p.pos.y - y_inicial);
-        if (p.pos.y > y_inicial + 15.0f && p.pos.y < 20.0f) {
-            printf("  OK (subio rampa suavemente a y=%.2f)\n", p.pos.y);
-        } else {
-            printf("  FALLO: subida de rampa anómala (y=%.2f)\n", p.pos.y);
-            g_fallos++;
-        }
+        printf("\n--- Test: step-up agachado (bloque 16 u) ---\n");
+        printf("  pos=(%.2f, %.2f, %.2f), pico=%.2f\n",
+               p.pos.x, p.pos.y, p.pos.z, max_y);
+        comprobar(p.pos.x >= 235.0f, "agachado no paso el bloque de 16 u");
+        comprobar(max_y >= 15.0f && max_y <= 20.0f, "agachado no subio el bloque");
     }
 
-    /* Test: bajar rampa caminando (gravedad tangencial acelera) */
-    {
-        PhysPlayer p;
-        phys_player_init(&p, (Vec3){ 220.0f, 18.0f, 0.0f });  /* tope de la rampa */
-        p.en_suelo = true;
-
-        PhysInput in = {0};
-        in.wish_dir = (Vec3){ -1.0f, 0.0f, 0.0f };  /* hacia -x (bajando) */
-        in.saltar = false;
-        in.saltar_held = false;
-        in.agacharse = false;
-        in.caminar = false;
-
-        f32 x_inicial = p.pos.x;
-        f32 vel_xz_max = 0.0f;
-        for (int i = 0; i < 100; i++) {
-            phys_tick(&p, in, &g_map_test, 1.0f / 64.0f, &g_broadphase);
-            f32 vxz = sqrtf(p.vel.x * p.vel.x + p.vel.z * p.vel.z);
-            if (vxz > vel_xz_max) vel_xz_max = vxz;
-        }
-        printf("\n--- Test: bajar rampa caminando (-x) ---\n");
-        printf("  recorrido x=%.2f, vel_max=%.2f\n", x_inicial - p.pos.x, vel_xz_max);
-        if (vel_xz_max > SPEED_RUN * 1.2f) {  /* debe acelerar por gravedad */
-            printf("  OK (aceleró cuesta abajo por gravedad tangencial, vel_max=%.2f)\n", vel_xz_max);
-        } else {
-            printf("  INFO: vel_max=%.2f (esperado > %.2f si gravedad tangencial funciona)\n", vel_xz_max, SPEED_RUN * 1.2f);
-        }
-    }
+    printf("\n=== Tests de salto ===\n");
+    simular_salto("salto simple sin doble salto");
 
     if (g_fallos > 0) {
         printf("\nRESULTADO: %d fallo(s)\n", g_fallos);
