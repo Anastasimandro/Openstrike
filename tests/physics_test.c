@@ -246,21 +246,28 @@ int main(void)
     comprobar(r.final_pos.x >= -70.0f && r.final_pos.x <= -66.0f,
               "no se detuvo contra el bloque de 32 u (lo trepo o lo atraveso)");
 
-    /* Movimiento casi paralelo a la pared con leve componente hacia dentro. */
+    /* Movimiento casi paralelo a la pared con leve componente hacia dentro.
+     * El jugador arranca pegado a la pared que quiere rozar: si arranca en
+     * el centro, la componente dominante choca contra la pared perpendicular
+     * y la fricción frena el deslizamiento (rozamiento normal de CS, no un
+     * fallo). Así se comprueba de verdad que se desliza por la pared. */
     r = simular("rasante pared norte (+x, 15 dentro)",
                 vec3_norm((Vec3){ 1.0f, 0.0f, -0.268f }),
-                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
-    comprobar(r.final_pos.z <= -238.0f, "no se mantuvo pegado a la pared norte");
+                320, (Vec3){ 0.0f, 0.0f, -240.0f }, 0.5f);
+    comprobar(r.final_pos.x >= 238.0f && r.final_pos.z <= -238.0f,
+              "no se mantuvo pegado a la pared norte");
 
     r = simular("rasante pared oeste (-z, 15 dentro)",
                 vec3_norm((Vec3){ -0.268f, 0.0f, -1.0f }),
-                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
-    comprobar(r.final_pos.x <= -238.0f, "no se mantuvo pegado a la pared oeste");
+                320, (Vec3){ -240.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.z <= -238.0f && r.final_pos.x <= -238.0f,
+              "no se mantuvo pegado a la pared oeste");
 
     r = simular("rasante pared este (+z, 15 dentro)",
-                vec3_norm((Vec3){ 1.0f, 0.0f, 0.268f }),
-                320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
-    comprobar(r.final_pos.x >= 238.0f, "no se mantuvo pegado a la pared este");
+                vec3_norm((Vec3){ 0.268f, 0.0f, 1.0f }),
+                320, (Vec3){ 240.0f, 0.0f, 0.0f }, 0.5f);
+    comprobar(r.final_pos.z >= 238.0f && r.final_pos.x >= 238.0f,
+              "no se mantuvo pegado a la pared este");
 
     r = simular("diagonal suave hacia pared este",
                 vec3_norm((Vec3){ 1.0f, 0.0f, 0.5f }),
