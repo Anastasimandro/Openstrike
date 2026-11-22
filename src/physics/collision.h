@@ -24,7 +24,7 @@
 /* Altura máxima de escalón para step-up (5a-3).
  * 18 u — misma que usa el snap de rampas en pmove.c.
  * Definido aquí para evitar dependencia circular con pmove.h. */
-#define SV_STEPSIZE 18.0f
+#define SV_STEPSIZE 32.0f
 
 /* Radio del jugador (cápsula aproximada) para el bloqueo de paredes */
 #define RADIO_JUGADOR 16.0f
@@ -79,7 +79,7 @@ FloorHit collision_detectar_suelo(const Map *map, Vec3 pos, f32 crouch_height);
  * Retorna true si se corrigió algo. Sin malloc, O(vértices del mapa). */
 bool collision_bloquear_pared(const Map *map, Vec3 *pos, Vec3 *vel, f32 dt, f32 crouch_height);
 
-/* Step-up (5a-3): intenta subir un escalón de hasta SV_STEPSIZE (18 u).
+/* Step-up (5a-3): intenta subir un escalón de hasta SV_STEPSIZE (32 u).
  * Llamar tras collision_bloquear_pared (solo si devolvió true) y ANTES de
  * collision_detectar_suelo.
  * Si el jugador estaba en suelo y se mueve en XZ, lanza un rayo hacia abajo

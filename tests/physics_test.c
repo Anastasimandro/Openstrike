@@ -17,8 +17,8 @@
 /* Test de física sin SDL: simula phys_tick contra sala_prueba.
  * Comprueba tres cosas que la regresión de rampas rompió:
  *   1. El jugador nunca sale de la sala ni atraviesa paredes.
- *   2. No trepa bloques que superan SV_STEPSIZE (18 u): la caja de 32 u
- *      en x=[-116,-84] debe bloquear, no elevar al jugador.
+ *   2. Sube bloques de hasta SV_STEPSIZE (32 u): la caja de 32 u
+ *      en x=[-116,-84] se sube, no bloquea al jugador.
  *   3. Las rampas se suben/bajan pegadas al suelo, sin volar ni deslizarse
  *      solas cuando el jugador está quieto.
  * Compilación y ejecución: ver el paso "Test físico" en build.yml (linux). */
@@ -240,11 +240,11 @@ int main(void)
                 320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
     comprobar(r.final_pos.z >= 238.0f, "no se detuvo en la pared sur");
 
-    /* Caja de 32 u en x=[-116,-84]: supera SV_STEPSIZE y NO se debe trepar. */
+    /* Caja de 32 u en x=[-116,-84]: con SV_STEPSIZE=32 se sube al top. */
     r = simular("recto hacia bloque oeste (x-)", (Vec3){ -1.0f, 0.0f, 0.0f },
                 320, (Vec3){ 0.0f, 0.0f, 0.0f }, 0.5f);
-    comprobar(r.final_pos.x >= -70.0f && r.final_pos.x <= -66.0f,
-              "no se detuvo contra el bloque de 32 u (lo trepo o lo atraveso)");
+    comprobar(r.max_y >= 30.0f,
+              "subio al bloque de 32 u (SV_STEPSIZE ahora es 32)");
 
     /* Movimiento casi paralelo a la pared con leve componente hacia dentro.
      * El jugador arranca pegado a la pared que quiere rozar: si arranca en
