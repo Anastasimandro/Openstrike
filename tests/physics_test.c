@@ -368,6 +368,30 @@ int main(void)
     }
 
     printf("\n=== Tests de salto ===\n");
+
+    /* Saltar pegado al bloque de 16 u no debe disparar el step-up: en el
+     * tick del salto la Y solo sube por el impulso (~5 u). Antes el step-up
+     * teletransportaba al jugador a x=88, y=16 en ese mismo tick (imán). */
+    {
+        PhysPlayer p;
+        phys_player_init(&p, (Vec3){ 68.0f, 0.0f, 0.0f });  /* 16 u del bloque */
+        p.en_suelo = true;
+
+        PhysInput in = {0};
+        in.wish_dir    = (Vec3){ 1.0f, 0.0f, 0.0f };
+        in.saltar      = true;
+        in.saltar_held = true;
+
+        phys_tick(&p, in, &g_map_test, 1.0f / 64.0f);
+        printf("\n--- Test: salto junto al bloque (sin step-up) ---\n");
+        printf("  tick 1: pos=(%.2f, %.2f, %.2f)\n",
+               p.pos.x, p.pos.y, p.pos.z);
+        comprobar(p.pos.y < 10.0f,
+                  "el step-up teletransporto al jugador al saltar junto al bloque");
+        comprobar(p.pos.x < 75.0f,
+                  "el step-up avanzo al jugador al saltar junto al bloque");
+    }
+
     simular_salto("salto simple sin doble salto");
 
     if (g_fallos > 0) {

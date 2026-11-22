@@ -252,9 +252,10 @@ void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt)
                                               p->crouch_height);
 
     /* ── Step-up (5a-3): subir escalones planos de hasta 18 u ───────────── *
-     * Solo tras chocar con una pared: así no se dispara al caminar cerca  *
-     * de un borde. El step-up sube y avanza sobre el escalón.             */
-    if (bloqueado) {
+     * Solo tras chocar con una pared y sin haber saltado en este tick: si  *
+     * no, saltar pegado a un bloque teletransporta al jugador encima de    *
+     * golpe (sensación de imán). En el aire en_suelo_antes ya es false.    */
+    if (bloqueado && !salto_consumido) {
         f32 y_antes_step = p->pos.y;
         if (collision_intentar_step_up(map, &p->pos, &input.wish_dir,
                                        en_suelo_antes, p->crouch_height)) {
